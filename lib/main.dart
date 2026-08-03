@@ -1,4 +1,4 @@
-import 'dart0:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:image_picker/image_picker.dart';
