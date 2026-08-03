@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.6
   blue_thermal_printer: ^1.2.3
+  image_picker: ^1.0.7
+
 
 dev_dependencies:
   flutter_test:
