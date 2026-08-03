@@ -998,7 +998,7 @@ class _SalesPageState extends State<SalesPage> {
                     const Text('Daftar Belanja:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 6),
                     Container(
-                      maxHeight: 120,
+                      Height: 120,
                       decoration: BoxDecoration(
                         color: Colors.grey.shade50,
                         borderRadius: BorderRadius.circular(8),
