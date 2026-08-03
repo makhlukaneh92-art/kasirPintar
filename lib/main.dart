@@ -1,5 +1,7 @@
+import 'dart0:io';
 import 'package:flutter/material.dart';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   runApp(const KasirApp());
@@ -21,20 +23,43 @@ class KasirApp extends StatelessWidget {
   }
 }
 
-// Model Data Produk
-class Product {
+// Model Profil Toko dengan Logo
+class StoreProfile {
   String name;
-  double price;
-  int stock;
+  String address;
+  String phone;
+  String footerNote;
+  String? logoPath;
 
-  Product({required this.name, required this.price, required this.stock});
+  StoreProfile({
+    required this.name,
+    required this.address,
+    required this.phone,
+    required this.footerNote,
+    this.logoPath,
+  });
 }
 
-// Model Data Item di Keranjang Belanja
+// Model Produk dengan Harga Jual & Harga Modal
+class Product {
+  String name;
+  double price; // Harga Jual
+  double costPrice; // Harga Modal / Beli
+  int stock;
+
+  Product({
+    required this.name,
+    required this.price,
+    required this.costPrice,
+    required this.stock,
+  });
+}
+
+// Model Item di Keranjang Belanja
 class CartItem {
   Product product;
   int quantity;
-  double customPrice; // Memungkinkan penyesuaian harga di struk
+  double customPrice;
 
   CartItem({
     required this.product,
@@ -43,30 +68,48 @@ class CartItem {
   }) : customPrice = customPrice ?? product.price;
 
   double get subtotal => customPrice * quantity;
+  double get subtotalCost => product.costPrice * quantity;
 }
 
-// Model Data Riwayat Transaksi (Laporan Penjualan)
+// Model Riwayat Transaksi Penjualan + Data Pelanggan Lengkap
 class TransactionRecord {
   String id;
   String date;
+  String customerName;
+  String customerPhone;
+  String customerCity;
   List<CartItem> items;
   double total;
+  double totalCost;
+  double paidAmount;
+  double changeAmount;
   String note;
 
   TransactionRecord({
     required this.id,
     required this.date,
+    required this.customerName,
+    this.customerPhone = '',
+    this.customerCity = '',
     required this.items,
     required this.total,
+    required this.totalCost,
+    required this.paidAmount,
+    required this.changeAmount,
     this.note = '',
   });
 
+  double get profit => total - totalCost;
+
   void recalculateTotal() {
     total = items.fold(0, (sum, item) => sum + item.subtotal);
+    totalCost = items.fold(0, (sum, item) => sum + item.subtotalCost);
+    changeAmount = paidAmount - total;
+    if (changeAmount < 0) changeAmount = 0;
   }
 }
 
-// Model Data Keuangan (Kas Masuk / Keluar)
+// Model Catatan Keuangan
 class CashRecord {
   final String title;
   final double amount;
@@ -89,23 +132,33 @@ class DashboardKasir extends StatefulWidget {
 }
 
 class _DashboardKasirState extends State<DashboardKasir> {
-  // Bluetooth Printer Global State
+  // Bluetooth Printer State
   BlueThermalPrinter bluetooth = BlueThermalPrinter.instance;
   List<BluetoothDevice> _devices = [];
   BluetoothDevice? _selectedDevice;
   bool _isConnected = false;
 
-  // Daftar Produk Utama
+  // Profil Toko Default
+  StoreProfile storeProfile = StoreProfile(
+    name: 'TOKO KASIR PINTAR',
+    address: 'Jl. Merdeka No. 123, Jakarta',
+    phone: '081234567890',
+    footerNote: 'Terima kasih atas kunjungan Anda!\nBarang yang dibeli tidak dapat ditukar.',
+  );
+
+  // Daftar Produk Utama (Termasuk Harga Modal)
   List<Product> products = [
-    Product(name: 'Kopi Susu', price: 15000, stock: 50),
-    Product(name: 'Roti Bakar', price: 12000, stock: 30),
+    Product(name: 'Kopi Susu', price: 15000, costPrice: 9000, stock: 50),
+    Product(name: 'Roti Bakar', price: 12000, costPrice: 7000, stock: 30),
   ];
 
-  // Daftar Riwayat Transaksi Penjualan
+  // Daftar Riwayat Transaksi
   List<TransactionRecord> transactions = [];
 
-  // Daftar Catatan Keuangan
+  // Daftar Keuangan
   List<CashRecord> cashRecords = [];
+
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -119,7 +172,7 @@ class _DashboardKasirState extends State<DashboardKasir> {
     try {
       devices = await bluetooth.getBondedDevices();
     } catch (e) {
-      // Bluetooth permission or hardware issue handle gracefully
+      // Handle hardware / permission error
     }
 
     setState(() {
@@ -143,46 +196,180 @@ class _DashboardKasirState extends State<DashboardKasir> {
     });
   }
 
-  // Fungsi Cetak Struk ke Printer Thermal
+  // Fungsi Cetak Struk dengan Logo
   void _printReceipt(TransactionRecord record) async {
     bool? connected = await bluetooth.isConnected;
     if (connected != true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Printer belum terhubung! Sambungkan printer di menu Bluetooth.')),
+          const SnackBar(content: Text('Printer belum terhubung! Sambungkan printer via tombol di atas.')),
         );
       }
       return;
     }
 
-    // Header Struk
-    bluetooth.printCustom("KASIR PINTAR", 2, 1);
-    bluetooth.printCustom("Toko Pintar Kamu", 1, 1);
-    bluetooth.printCustom("--------------------------------", 1, 1);
-    bluetooth.printLeftRight("Waktu:", record.date, 1);
-    bluetooth.printLeftRight("ID Tx:", record.id, 1);
+    // 1. Cetak Logo Toko (Jika Ada)
+    if (storeProfile.logoPath != null && File(storeProfile.logoPath!).existsSync()) {
+      try {
+        bluetooth.printImage(storeProfile.logoPath!);
+      } catch (e) {
+        // Fallback jika printer gagal memproses gambar
+      }
+    }
+
+    // 2. Header Profil Toko
+    bluetooth.printCustom(storeProfile.name.toUpperCase(), 2, 1);
+    if (storeProfile.address.isNotEmpty) {
+      bluetooth.printCustom(storeProfile.address, 1, 1);
+    }
+    if (storeProfile.phone.isNotEmpty) {
+      bluetooth.printCustom("Telp: ${storeProfile.phone}", 1, 1);
+    }
     bluetooth.printCustom("--------------------------------", 1, 1);
 
-    // Detail Item
+    // 3. Info Transaksi & Nama Pelanggan saja di Struk
+    bluetooth.printLeftRight("Tgl :", record.date, 1);
+    bluetooth.printLeftRight("No  :", record.id, 1);
+    if (record.customerName.isNotEmpty) {
+      bluetooth.printLeftRight("Pel :", record.customerName, 1);
+    }
+    bluetooth.printCustom("--------------------------------", 1, 1);
+
+    // 4. Daftar Belanjaan
     for (var item in record.items) {
+      bluetooth.printCustom(item.product.name, 1, 0);
       bluetooth.printLeftRight(
-        "${item.product.name} x${item.quantity}",
+        "  ${item.quantity} x Rp ${item.customPrice.toStringAsFixed(0)}",
         "Rp ${item.subtotal.toStringAsFixed(0)}",
         1,
       );
     }
 
     bluetooth.printCustom("--------------------------------", 1, 1);
-    bluetooth.printLeftRight("TOTAL:", "Rp ${record.total.toStringAsFixed(0)}", 2);
+
+    // 5. Perhitungan Total & Pembayaran
+    bluetooth.printLeftRight("TOTAL :", "Rp ${record.total.toStringAsFixed(0)}", 2);
+    bluetooth.printLeftRight("BAYAR :", "Rp ${record.paidAmount.toStringAsFixed(0)}", 1);
+    bluetooth.printLeftRight("KEMBALI:", "Rp ${record.changeAmount.toStringAsFixed(0)}", 1);
 
     if (record.note.isNotEmpty) {
       bluetooth.printCustom("Catatan: ${record.note}", 1, 0);
     }
 
     bluetooth.printCustom("================================", 1, 1);
-    bluetooth.printCustom("Terima Kasih Atas Kunjungan Anda!", 1, 1);
+
+    // 6. Pesan Penutup Toko
+    if (storeProfile.footerNote.isNotEmpty) {
+      bluetooth.printCustom(storeProfile.footerNote, 1, 1);
+    }
+
     bluetooth.printNewLine();
     bluetooth.printNewLine();
+  }
+
+  void _showStoreProfileDialog() {
+    final nameCtrl = TextEditingController(text: storeProfile.name);
+    final addressCtrl = TextEditingController(text: storeProfile.address);
+    final phoneCtrl = TextEditingController(text: storeProfile.phone);
+    final footerCtrl = TextEditingController(text: storeProfile.footerNote);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Pengaturan Identitas Toko'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Preview & Pilih Logo Toko
+                    if (storeProfile.logoPath != null && File(storeProfile.logoPath!).existsSync())
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(storeProfile.logoPath!),
+                          height: 80,
+                          width: 80,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    else
+                      Container(
+                        height: 80,
+                        width: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.store, size: 40, color: Colors.grey),
+                      ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.image),
+                      label: Text(storeProfile.logoPath == null ? 'Pilih Logo Toko' : 'Ganti Logo'),
+                      onPressed: () async {
+                        final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+                        if (image != null) {
+                          setDialogState(() {
+                            storeProfile.logoPath = image.path;
+                          });
+                        }
+                      },
+                    ),
+                    const Divider(),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Nama Toko / Usaha'),
+                    ),
+                    TextField(
+                      controller: addressCtrl,
+                      decoration: const InputDecoration(labelText: 'Alamat Toko'),
+                    ),
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: 'Nomor Telepon / WA'),
+                    ),
+                    TextField(
+                      controller: footerCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Pesan Kaki Struk (Footer)',
+                        hintText: 'Contoh: Terima kasih sudah berbelanja!',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () {
+                    setState(() {
+                      storeProfile.name = nameCtrl.text;
+                      storeProfile.address = addressCtrl.text;
+                      storeProfile.phone = phoneCtrl.text;
+                      storeProfile.footerNote = footerCtrl.text;
+                    });
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Profil toko berhasil diperbarui!')),
+                    );
+                  },
+                  child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showPrinterDialog() {
@@ -219,7 +406,7 @@ class _DashboardKasirState extends State<DashboardKasir> {
                     ),
                     const Divider(),
                     _devices.isEmpty
-                        ? const Text('Tidak ada perangkat Bluetooth tersambung di HP (Lakukan Pairing di Pengaturan HP dulu).')
+                        ? const Text('Tidak ada perangkat Bluetooth tersambung di HP.')
                         : DropdownButton<BluetoothDevice>(
                             isExpanded: true,
                             hint: const Text('Pilih Perangkat Printer'),
@@ -274,9 +461,14 @@ class _DashboardKasirState extends State<DashboardKasir> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Kasir Pintar'),
+        title: Text(storeProfile.name),
         backgroundColor: Colors.teal,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.storefront),
+            onPressed: _showStoreProfileDialog,
+            tooltip: 'Pengaturan Toko',
+          ),
           IconButton(
             icon: Icon(Icons.print, color: _isConnected ? Colors.greenAccent : Colors.white),
             onPressed: _showPrinterDialog,
@@ -318,11 +510,16 @@ class _DashboardKasirState extends State<DashboardKasir> {
               ),
               const SizedBox(height: 16),
 
-              // Menu List
               const Text('Menu Utama', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 10),
 
-              // Menu Manajemen
+              // Menu Identitas Toko
+              GestureDetector(
+                onTap: _showStoreProfileDialog,
+                child: _buildMenuItem(Icons.store, 'Pengaturan Identitas & Logo Toko'),
+              ),
+
+              // Menu Manajemen Produk
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -335,7 +532,7 @@ class _DashboardKasirState extends State<DashboardKasir> {
                     ),
                   );
                 },
-                child: _buildMenuItem(Icons.layers, 'Manajemen Produk'),
+                child: _buildMenuItem(Icons.layers, 'Manajemen Produk (Jual & Modal)'),
               ),
 
               // Menu Transaksi Penjualan
@@ -363,47 +560,17 @@ class _DashboardKasirState extends State<DashboardKasir> {
                     ),
                   );
                 },
-                child: _buildMenuItem(Icons.shopping_cart, 'Transaksi Penjualan'),
+                child: _buildMenuItem(Icons.shopping_cart, 'Transaksi Penjualan (Kasir)'),
               ),
 
-              // Menu Pembelian dari Supplier
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SupplierPage(
-                        products: products,
-                        onRestock: (productName, addedStock, totalCost) {
-                          setState(() {
-                            var p = products.firstWhere((item) => item.name == productName);
-                            p.stock += addedStock;
-
-                            final now = DateTime.now();
-                            String formattedDate =
-                                "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} - ${now.day}/${now.month}/${now.year}";
-                            cashRecords.add(CashRecord(
-                              title: 'Restock: $productName ($addedStock pcs)',
-                              amount: totalCost,
-                              isIncome: false,
-                              date: formattedDate,
-                            ));
-                          });
-                        },
-                      ),
-                    ),
-                  );
-                },
-                child: _buildMenuItem(Icons.inventory, 'Pembelian dari Supplier'),
-              ),
-
-              // Menu Keuangan
+              // Menu Keuangan & Laba Bersih
               GestureDetector(
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => KeuanganPage(
+                        transactions: transactions,
                         cashRecords: cashRecords,
                         onAddRecord: (newRecord) {
                           setState(() {
@@ -414,10 +581,10 @@ class _DashboardKasirState extends State<DashboardKasir> {
                     ),
                   );
                 },
-                child: _buildMenuItem(Icons.account_balance_wallet, 'Keuangan'),
+                child: _buildMenuItem(Icons.account_balance_wallet, 'Keuangan & Laba Bersih'),
               ),
 
-              // Menu Laporan & Edit Struk
+              // Menu Laporan Penjualan & Edit Struk
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -456,7 +623,7 @@ class _DashboardKasirState extends State<DashboardKasir> {
   }
 }
 
-// Halaman Manajemen Produk
+// Halaman Manajemen Produk (Harga Jual & Modal)
 class ProductManagementPage extends StatefulWidget {
   final List<Product> products;
   final VoidCallback onUpdateState;
@@ -477,6 +644,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
   void _showAddProductDialog(BuildContext context) {
     final nameController = TextEditingController();
     final priceController = TextEditingController();
+    final costController = TextEditingController();
     final stockController = TextEditingController();
 
     showDialog(
@@ -484,24 +652,31 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Tambah Produk Baru'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Nama Produk'),
-              ),
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Harga Jual (Rp)'),
-              ),
-              TextField(
-                controller: stockController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Stok Awal'),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nama Produk'),
+                ),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Harga Jual (Rp)'),
+                ),
+                TextField(
+                  controller: costController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Harga Modal / Beli (Rp)'),
+                ),
+                TextField(
+                  controller: stockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Stok Awal'),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -516,6 +691,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                     Product(
                       name: nameController.text,
                       price: double.tryParse(priceController.text) ?? 0,
+                      costPrice: double.tryParse(costController.text) ?? 0,
                       stock: int.tryParse(stockController.text) ?? 0,
                     ),
                   );
@@ -535,6 +711,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
   void _showEditProductDialog(BuildContext context, Product product) {
     final nameController = TextEditingController(text: product.name);
     final priceController = TextEditingController(text: product.price.toStringAsFixed(0));
+    final costController = TextEditingController(text: product.costPrice.toStringAsFixed(0));
     final stockController = TextEditingController(text: product.stock.toString());
 
     showDialog(
@@ -542,24 +719,31 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Edit Produk'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Nama Produk'),
-              ),
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Harga Jual (Rp)'),
-              ),
-              TextField(
-                controller: stockController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Stok'),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nama Produk'),
+                ),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Harga Jual (Rp)'),
+                ),
+                TextField(
+                  controller: costController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Harga Modal / Beli (Rp)'),
+                ),
+                TextField(
+                  controller: stockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Stok'),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -572,6 +756,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                 if (nameController.text.isNotEmpty) {
                   product.name = nameController.text;
                   product.price = double.tryParse(priceController.text) ?? product.price;
+                  product.costPrice = double.tryParse(costController.text) ?? product.costPrice;
                   product.stock = int.tryParse(stockController.text) ?? product.stock;
 
                   widget.onUpdateState();
@@ -632,9 +817,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
               decoration: InputDecoration(
                 hintText: 'Cari nama produk...',
                 prefixIcon: const Icon(Icons.search, color: Colors.teal),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
               onChanged: (val) {
@@ -658,10 +841,9 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                             backgroundColor: Colors.teal,
                             child: Icon(Icons.shopping_bag, color: Colors.white),
                           ),
-                          title: Text(product.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                          title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text(
-                              'Harga: Rp ${product.price.toStringAsFixed(0)} | Stok: ${product.stock}'),
+                              'Jual: Rp ${product.price.toStringAsFixed(0)} | Modal: Rp ${product.costPrice.toStringAsFixed(0)}\nStok: ${product.stock}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -691,123 +873,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
   }
 }
 
-// Halaman Pembelian dari Supplier
-class SupplierPage extends StatefulWidget {
-  final List<Product> products;
-  final Function(String, int, double) onRestock;
-
-  const SupplierPage({
-    Key? key,
-    required this.products,
-    required this.onRestock,
-  }) : super(key: key);
-
-  @override
-  State<SupplierPage> createState() => _SupplierPageState();
-}
-
-class _SupplierPageState extends State<SupplierPage> {
-  void _showRestockDialog(BuildContext context, Product product) {
-    final qtyController = TextEditingController();
-    final costController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Restock: ${product.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: qtyController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Jumlah Tambah Stok'),
-              ),
-              TextField(
-                controller: costController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Total Biaya Belanja (Rp)'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-              onPressed: () {
-                if (qtyController.text.isNotEmpty && costController.text.isNotEmpty) {
-                  int addQty = int.tryParse(qtyController.text) ?? 0;
-                  double totalCost = double.tryParse(costController.text) ?? 0;
-
-                  if (addQty > 0) {
-                    widget.onRestock(product.name, addQty, totalCost);
-                    setState(() {});
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Stok berhasil ditambah & tercatat di Keuangan!')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Simpan', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pembelian dari Supplier'),
-        backgroundColor: Colors.teal,
-      ),
-      body: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Pilih produk yang ingin ditambah stoknya (Kulakan)',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          ),
-          Expanded(
-            child: widget.products.isEmpty
-                ? const Center(child: Text('Belum ada produk terdaftar'))
-                : ListView.builder(
-                    itemCount: widget.products.length,
-                    itemBuilder: (context, index) {
-                      final p = widget.products[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.teal,
-                            child: Icon(Icons.local_shipping, color: Colors.white),
-                          ),
-                          title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Stok Saat Ini: ${p.stock}'),
-                          trailing: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                            onPressed: () => _showRestockDialog(context, p),
-                            child: const Text('Restock', style: TextStyle(color: Colors.white)),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Halaman Transaksi Penjualan
+// Halaman Transaksi Kasir dengan Pengeditan Jumlah Keranjang & Rincian Pembayaran
 class SalesPage extends StatefulWidget {
   final List<Product> products;
   final VoidCallback onUpdateState;
@@ -829,6 +895,7 @@ class _SalesPageState extends State<SalesPage> {
   String searchQuery = '';
 
   double get totalHarga => cart.fold(0, (sum, item) => sum + item.subtotal);
+  double get totalModal => cart.fold(0, (sum, item) => sum + item.subtotalCost);
 
   void _addToCart(Product product) {
     if (product.stock <= 0) {
@@ -841,7 +908,7 @@ class _SalesPageState extends State<SalesPage> {
     setState(() {
       var existing = cart.firstWhere(
         (item) => item.product.name == product.name,
-        orElse: () => CartItem(product: Product(name: '', price: 0, stock: 0), quantity: 0),
+        orElse: () => CartItem(product: Product(name: '', price: 0, costPrice: 0, stock: 0), quantity: 0),
       );
 
       if (existing.quantity > 0) {
@@ -858,41 +925,294 @@ class _SalesPageState extends State<SalesPage> {
     });
   }
 
-  void _checkout() {
-    if (cart.isEmpty) return;
+  void _incrementCartItem(CartItem item) {
+    if (item.quantity < item.product.stock) {
+      setState(() {
+        item.quantity++;
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Jumlah melebihi stok yang tersedia!')),
+      );
+    }
+  }
 
-    final now = DateTime.now();
-    String formattedDate =
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} - ${now.day}/${now.month}/${now.year}";
-    String txId = "TX${now.millisecondsSinceEpoch.toString().substring(7)}";
-
-    List<CartItem> recordedItems = cart
-        .map((i) => CartItem(
-              product: i.product,
-              quantity: i.quantity,
-              customPrice: i.customPrice,
-            ))
-        .toList();
-
-    TransactionRecord newRecord = TransactionRecord(
-      id: txId,
-      date: formattedDate,
-      items: recordedItems,
-      total: totalHarga,
-    );
-
+  void _decrementCartItem(CartItem item) {
     setState(() {
-      for (var item in cart) {
-        item.product.stock -= item.quantity;
+      if (item.quantity > 1) {
+        item.quantity--;
+      } else {
+        cart.remove(item);
       }
-      widget.onCheckout(newRecord);
-      cart.clear();
     });
+  }
 
-    widget.onUpdateState();
+  void _removeCartItem(CartItem item) {
+    setState(() {
+      cart.remove(item);
+    });
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transaksi Berhasil & Struk Dicetak!')),
+  // Pop-Up Rincian Penjualan & Pembayaran
+  void _showCheckoutDialog() {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final cityCtrl = TextEditingController();
+    final paidCtrl = TextEditingController();
+    double paidAmount = 0;
+    double changeAmount = 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setBottomSheetState) {
+            void calculateChange(String value) {
+              paidAmount = double.tryParse(value) ?? 0;
+              setBottomSheetState(() {
+                changeAmount = paidAmount - totalHarga;
+              });
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Rincian Transaksi & Pembayaran',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+                    const Divider(),
+
+                    // Ringkasan Item
+                    const Text('Daftar Belanja:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Container(
+                      maxHeight: 120,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: cart.length,
+                        itemBuilder: (context, index) {
+                          final i = cart[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('${i.product.name} x${i.quantity}'),
+                                Text('Rp ${i.subtotal.toStringAsFixed(0)}'),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Pembayaran:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('Rp ${totalHarga.toStringAsFixed(0)}',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal)),
+                      ],
+                    ),
+                    const Divider(),
+
+                    // Data Pelanggan
+                    const Text('Data Pelanggan (Opsional)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Pelanggan',
+                        prefixIcon: Icon(Icons.person, color: Colors.teal),
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: phoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(
+                              labelText: 'No. Telp (Data)',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: cityCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Kota (Data)',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Uang Dibayar
+                    TextField(
+                      controller: paidCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Nominal Uang Dibayar (Rp)',
+                        prefixIcon: Icon(Icons.money, color: Colors.teal),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: calculateChange,
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Tombol Cepat Nominal
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ActionChip(
+                          label: const Text('Uang Pas'),
+                          onPressed: () {
+                            paidCtrl.text = totalHarga.toStringAsFixed(0);
+                            calculateChange(paidCtrl.text);
+                          },
+                        ),
+                        ActionChip(
+                          label: const Text('20rb'),
+                          onPressed: () {
+                            paidCtrl.text = '20000';
+                            calculateChange('20000');
+                          },
+                        ),
+                        ActionChip(
+                          label: const Text('50rb'),
+                          onPressed: () {
+                            paidCtrl.text = '50000';
+                            calculateChange('50000');
+                          },
+                        ),
+                        ActionChip(
+                          label: const Text('100rb'),
+                          onPressed: () {
+                            paidCtrl.text = '100000';
+                            calculateChange('100000');
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Status Kembalian
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: changeAmount >= 0 ? Colors.green.shade50 : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Kembalian:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: changeAmount >= 0 ? Colors.green.shade900 : Colors.red.shade900,
+                              )),
+                          Text(
+                            changeAmount >= 0
+                                ? 'Rp ${changeAmount.toStringAsFixed(0)}'
+                                : 'Uang Kurang Rp ${(-changeAmount).toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: changeAmount >= 0 ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                        onPressed: changeAmount < 0 || paidAmount == 0
+                            ? null
+                            : () {
+                                final now = DateTime.now();
+                                String formattedDate =
+                                    "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} - ${now.day}/${now.month}/${now.year}";
+                                String txId = "TX${now.millisecondsSinceEpoch.toString().substring(7)}";
+
+                                List<CartItem> recordedItems = cart
+                                    .map((i) => CartItem(
+                                          product: i.product,
+                                          quantity: i.quantity,
+                                          customPrice: i.customPrice,
+                                        ))
+                                    .toList();
+
+                                TransactionRecord newRecord = TransactionRecord(
+                                  id: txId,
+                                  date: formattedDate,
+                                  customerName: nameCtrl.text,
+                                  customerPhone: phoneCtrl.text,
+                                  customerCity: cityCtrl.text,
+                                  items: recordedItems,
+                                  total: totalHarga,
+                                  totalCost: totalModal,
+                                  paidAmount: paidAmount,
+                                  changeAmount: changeAmount,
+                                );
+
+                                setState(() {
+                                  for (var item in cart) {
+                                    item.product.stock -= item.quantity;
+                                  }
+                                  widget.onCheckout(newRecord);
+                                  cart.clear();
+                                });
+
+                                widget.onUpdateState();
+                                Navigator.pop(context);
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Transaksi Berhasil & Struk Dicetak!')),
+                                );
+                              },
+                        child: const Text('KONFIRMASI & CETAK STRUK',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -926,7 +1246,7 @@ class _SalesPageState extends State<SalesPage> {
             ),
           ),
           SizedBox(
-            height: 110,
+            height: 100,
             child: filteredProducts.isEmpty
                 ? const Center(child: Text('Produk tidak ditemukan'))
                 : ListView.builder(
@@ -969,8 +1289,7 @@ class _SalesPageState extends State<SalesPage> {
           const Divider(thickness: 2),
           const Padding(
             padding: EdgeInsets.all(8.0),
-            child: Text('Keranjang Belanja',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            child: Text('Keranjang Belanja', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
           Expanded(
             child: cart.isEmpty
@@ -980,12 +1299,44 @@ class _SalesPageState extends State<SalesPage> {
                     itemCount: cart.length,
                     itemBuilder: (context, index) {
                       final item = cart[index];
-                      return ListTile(
-                        title: Text(item.product.name),
-                        subtitle: Text('Rp ${item.customPrice.toStringAsFixed(0)} x ${item.quantity}'),
-                        trailing: Text(
-                          'Rp ${item.subtotal.toStringAsFixed(0)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(item.product.name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                    Text('Rp ${item.customPrice.toStringAsFixed(0)} / pcs',
+                                        style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              // Tombol Edit Jumlah Item (+ / - / Hapus)
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline, color: Colors.orange),
+                                    onPressed: () => _decrementCartItem(item),
+                                  ),
+                                  Text('${item.quantity}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  IconButton(
+                                    icon: const Icon(Icons.add_circle_outline, color: Colors.teal),
+                                    onPressed: () => _incrementCartItem(item),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red),
+                                    onPressed: () => _removeCartItem(item),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -1009,11 +1360,10 @@ class _SalesPageState extends State<SalesPage> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.teal,
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
-                  onPressed: cart.isEmpty ? null : _checkout,
-                  child: const Text('Bayar & Cetak',
-                      style: TextStyle(fontSize: 16, color: Colors.white)),
+                  onPressed: cart.isEmpty ? null : _showCheckoutDialog,
+                  child: const Text('Bayar & Cetak', style: TextStyle(fontSize: 16, color: Colors.white)),
                 ),
               ],
             ),
@@ -1024,13 +1374,15 @@ class _SalesPageState extends State<SalesPage> {
   }
 }
 
-// Halaman Keuangan
+// Halaman Keuangan & Laporan Laba Bersih
 class KeuanganPage extends StatefulWidget {
+  final List<TransactionRecord> transactions;
   final List<CashRecord> cashRecords;
   final Function(CashRecord) onAddRecord;
 
   const KeuanganPage({
     Key? key,
+    required this.transactions,
     required this.cashRecords,
     required this.onAddRecord,
   }) : super(key: key);
@@ -1120,15 +1472,13 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   @override
   Widget build(BuildContext context) {
-    double totalPemasukan =
-        widget.cashRecords.where((r) => r.isIncome).fold(0, (sum, r) => sum + r.amount);
-    double totalPengeluaran =
-        widget.cashRecords.where((r) => !r.isIncome).fold(0, (sum, r) => sum + r.amount);
-    double saldoKas = totalPemasukan - totalPengeluaran;
+    double totalOmzet = widget.transactions.fold(0, (sum, tx) => sum + tx.total);
+    double totalModal = widget.transactions.fold(0, (sum, tx) => sum + tx.totalCost);
+    double totalLabaBersih = totalOmzet - totalModal;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manajemen Keuangan'),
+        title: const Text('Keuangan & Laba Bersih'),
         backgroundColor: Colors.teal,
       ),
       body: Column(
@@ -1145,28 +1495,36 @@ class _KeuanganPageState extends State<KeuanganPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Saldo Kas Saat Ini', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                const Text('Laba Bersih Penjualan', style: TextStyle(color: Colors.grey, fontSize: 14)),
                 const SizedBox(height: 6),
-                Text('Rp ${saldoKas.toStringAsFixed(0)}',
+                Text('Rp ${totalLabaBersih.toStringAsFixed(0)}',
                     style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold, color: Colors.teal)),
+                        fontSize: 26, fontWeight: FontWeight.bold, color: Colors.teal)),
                 const Divider(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Masuk: Rp ${totalPemasukan.toStringAsFixed(0)}',
+                    Text('Total Omzet: Rp ${totalOmzet.toStringAsFixed(0)}',
                         style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                    Text('Keluar: Rp ${totalPengeluaran.toStringAsFixed(0)}',
+                    Text('Total Modal: Rp ${totalModal.toStringAsFixed(0)}',
                         style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
             ),
           ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Catatan Kas Lain-Lain', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: widget.cashRecords.isEmpty
                 ? const Center(
-                    child: Text('Belum ada catatan keuangan', style: TextStyle(color: Colors.grey)))
+                    child: Text('Belum ada catatan keuangan manual', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: widget.cashRecords.length,
                     itemBuilder: (context, index) {
@@ -1225,9 +1583,9 @@ class LaporanPage extends StatefulWidget {
 }
 
 class _LaporanPageState extends State<LaporanPage> {
-  // Dialog khusus Edit Struk / Transaksi
   void _showEditReceiptDialog(TransactionRecord tx) {
     final noteController = TextEditingController(text: tx.note);
+    final customerController = TextEditingController(text: tx.customerName);
 
     showDialog(
       context: context,
@@ -1241,7 +1599,12 @@ class _LaporanPageState extends State<LaporanPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Ubah Jumlah atau Harga Item:',
+                    TextField(
+                      controller: customerController,
+                      decoration: const InputDecoration(labelText: 'Nama Pelanggan'),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Ubah Jumlah Item:',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
                     ...tx.items.map((item) {
@@ -1281,7 +1644,7 @@ class _LaporanPageState extends State<LaporanPage> {
                     TextField(
                       controller: noteController,
                       decoration: const InputDecoration(
-                        labelText: 'Catatan Khusus Struk (Misal: Diskon Ultah)',
+                        labelText: 'Catatan Khusus Struk',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1290,8 +1653,7 @@ class _LaporanPageState extends State<LaporanPage> {
                       children: [
                         const Text('Total Baru:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Text('Rp ${tx.total.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, color: Colors.teal)),
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                       ],
                     ),
                   ],
@@ -1307,6 +1669,7 @@ class _LaporanPageState extends State<LaporanPage> {
                   onPressed: () {
                     setState(() {
                       tx.note = noteController.text;
+                      tx.customerName = customerController.text;
                     });
                     widget.onUpdateTransaction();
                     Navigator.pop(context);
@@ -1359,27 +1722,25 @@ class _LaporanPageState extends State<LaporanPage> {
             padding: EdgeInsets.symmetric(horizontal: 16.0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Riwayat Transaksi',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('Riwayat Transaksi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: widget.transactions.isEmpty
                 ? const Center(
-                    child: Text('Belum ada transaksi tercatat',
-                        style: TextStyle(color: Colors.grey)))
+                    child: Text('Belum ada transaksi tercatat', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: widget.transactions.length,
-                    itemBuilder: (context, index) {
+                    itemBuilder: (index) {
                       final tx = widget.transactions[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                         child: ExpansionTile(
                           title: Text('${tx.id} - Rp ${tx.total.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, color: Colors.teal)),
-                          subtitle: Text('Waktu: ${tx.date}'),
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+                          subtitle: Text(
+                              'Waktu: ${tx.date}${tx.customerName.isNotEmpty ? ' | Pelanggan: ${tx.customerName}' : ''}'),
                           children: [
                             ...tx.items.map((item) {
                               return ListTile(
@@ -1389,6 +1750,18 @@ class _LaporanPageState extends State<LaporanPage> {
                                     '${item.quantity}x @Rp ${item.customPrice.toStringAsFixed(0)} = Rp ${item.subtotal.toStringAsFixed(0)}'),
                               );
                             }).toList(),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('Bayar: Rp ${tx.paidAmount.toStringAsFixed(0)}',
+                                      style: const TextStyle(color: Colors.grey)),
+                                  Text('Kembali: Rp ${tx.changeAmount.toStringAsFixed(0)}',
+                                      style: const TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                            ),
                             if (tx.note.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.all(8.0),
