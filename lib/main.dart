@@ -1,4 +1,4 @@
-import 'package02/flutter/material.dart';
+import 'package:flutter/material.dart';
 
 void main() {
   runApp(const KasirApp());
