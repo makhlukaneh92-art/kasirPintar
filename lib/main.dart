@@ -1732,7 +1732,7 @@ class _LaporanPageState extends State<LaporanPage> {
                     child: Text('Belum ada transaksi tercatat', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: widget.transactions.length,
-                    itemBuilder: (index) {
+                    itemBuilder: (context,index) {
                       final tx = widget.transactions[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
