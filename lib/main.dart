@@ -20,8 +20,28 @@ class KasirApp extends StatelessWidget {
   }
 }
 
-class DashboardKasir extends StatelessWidget {
+// Model Data Produk
+class Product {
+  String name;
+  double price;
+  int stock;
+
+  Product({required this.name, required this.price, required this.stock});
+}
+
+class DashboardKasir extends StatefulWidget {
   const DashboardKasir({Key? key}) : super(key: key);
+
+  @override
+  State<DashboardKasir> createState() => _DashboardKasirState();
+}
+
+class _DashboardKasirState extends State<DashboardKasir> {
+  // Daftar Produk Sementara (Akan bertambah saat kamu input produk baru)
+  List<Product> products = [
+    Product(name: 'Kopi Susu', price: 15000, stock: 50),
+    Product(name: 'Roti Bakar', price: 12000, stock: 30),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +147,25 @@ class DashboardKasir extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 10),
 
-              _buildMenuItem(Icons.layers, 'Manajemen'),
+              // Menu Manajemen (Dapat Diklik)
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ProductManagementPage(
+                        products: products,
+                        onAddProduct: (newProduct) {
+                          setState(() {
+                            products.add(newProduct);
+                          });
+                        },
+                      ),
+                    ),
+                  );
+                },
+                child: _buildMenuItem(Icons.layers, 'Manajemen'),
+              ),
               _buildMenuItem(Icons.shopping_cart, 'Transaksi Penjualan'),
               _buildMenuItem(Icons.inventory, 'Pembelian dari Supplier'),
               _buildMenuItem(Icons.account_balance_wallet, 'Keuangan'),
@@ -153,6 +191,122 @@ class DashboardKasir extends StatelessWidget {
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
         ],
+      ),
+    );
+  }
+}
+
+// Halaman Manajemen Produk
+class ProductManagementPage extends StatefulWidget {
+  final List<Product> products;
+  final Function(Product) onAddProduct;
+
+  const ProductManagementPage({
+    Key? key,
+    required this.products,
+    required this.onAddProduct,
+  }) : super(key: key);
+
+  @override
+  State<ProductManagementPage> createState() => _ProductManagementPageState();
+}
+
+class _ProductManagementPageState extends State<ProductManagementPage> {
+  void _showAddProductDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final stockController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Tambah Produk Baru'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Nama Produk'),
+              ),
+              TextField(
+                controller: priceController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Harga Jual (Rp)'),
+              ),
+              TextField(
+                controller: stockController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Stok Awal'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+              onPressed: () {
+                if (nameController.text.isNotEmpty &&
+                    priceController.text.isNotEmpty) {
+                  widget.onAddProduct(
+                    Product(
+                      name: nameController.text,
+                      price: double.tryParse(priceController.text) ?? 0,
+                      stock: int.tryParse(stockController.text) ?? 0,
+                    ),
+                  );
+                  setState(() {});
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manajemen Produk'),
+        backgroundColor: Colors.teal,
+      ),
+      body: widget.products.isEmpty
+          ? const Center(
+              child: Text('Belum ada produk. Tambahkan lewat tombol di bawah!'))
+          : ListView.builder(
+              itemCount: widget.products.length,
+              itemBuilder: (context, index) {
+                final product = widget.products[index];
+                return ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.teal,
+                    child: Icon(Icons.shopping_bag, color: Colors.white),
+                  ),
+                  title: Text(product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                      'Harga: Rp ${product.price.toStringAsFixed(0)}'),
+                  trailing: Text(
+                    'Stok: ${product.stock}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal,
+                        fontSize: 16),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.teal,
+        onPressed: () => _showAddProductDialog(context),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
