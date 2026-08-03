@@ -373,7 +373,6 @@ class _SalesPageState extends State<SalesPage> {
     }
 
     setState(() {
-      // Cek apakah produk sudah ada di keranjang
       var existing = cart.firstWhere(
         (item) => item.product.name == product.name,
         orElse: () => CartItem(product: Product(name: '', price: 0, stock: 0), quantity: 0),
@@ -398,7 +397,7 @@ class _SalesPageState extends State<SalesPage> {
 
     setState(() {
       for (var item in cart) {
-        item.product.stock -= item.quantity; // Kurangi stok asli produk
+        item.product.stock -= item.quantity;
       }
       cart.clear();
     });
@@ -429,7 +428,6 @@ class _SalesPageState extends State<SalesPage> {
       ),
       body: Column(
         children: [
-          // Daftar Produk yang bisa dipilih
           const Padding(
             padding: EdgeInsets.all(8.0),
             child: Text('Ketuk Produk untuk Masuk Keranjang',
@@ -438,7 +436,7 @@ class _SalesPageState extends State<SalesPage> {
           SizedBox(
             height: 120,
             child: widget.products.isEmpty
-                const Center(child: Text('Belum ada produk di manajemen'))
+                ? const Center(child: Text('Belum ada produk di manajemen'))
                 : ListView.builder(
                     scrollDirection: Axis.horizontal,
                     itemCount: widget.products.length,
@@ -480,8 +478,6 @@ class _SalesPageState extends State<SalesPage> {
                   ),
           ),
           const Divider(thickness: 2),
-
-          // Keranjang Belanja
           const Padding(
             padding: EdgeInsets.all(8.0),
             child: Text('Keranjang Belanja',
@@ -509,8 +505,6 @@ class _SalesPageState extends State<SalesPage> {
                     },
                   ),
           ),
-
-          // Bagian Total & Bayar
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.grey.shade100,
@@ -547,4 +541,3 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 }
-
