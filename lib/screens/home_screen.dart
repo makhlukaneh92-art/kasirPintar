@@ -54,7 +54,7 @@ _isConnected = isConnected ?? false;
 debugPrint("Bluetooth error: $e");
 }
 }
-​void _showPrinterDialog() {
+  ​void _showPrinterDialog() {
 showDialog(
 context: context,
 builder: (ctx) => AlertDialog(
@@ -117,13 +117,13 @@ child: const Text('Tutup', style: TextStyle(color: Colors.purple)),
 ),
 );
 }
-​void _showStoreSettingsDialog() {
+  void _showStoreSettingsDialog() {
 final nameCtrl = TextEditingController(text: widget.storeInfo.name);
 final addressCtrl = TextEditingController(text: widget.storeInfo.address);
 final phoneCtrl = TextEditingController(text: widget.storeInfo.phone);
 final footerCtrl = TextEditingController(text: widget.storeInfo.footer);
 File? tempImage = widget.storeInfo.logoFile;
-​showDialog(
+    ​showDialog(
 context: context,
 builder: (ctx) => StatefulBuilder(
 builder: (context, setDialogState) {
