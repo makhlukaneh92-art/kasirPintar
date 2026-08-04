@@ -239,19 +239,19 @@ const SizedBox(height: 20),
 const Text('Menu Utama', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
 const SizedBox(height: 12),
 _buildMenuItem(context, Icons.storefront, 'Pengaturan Identitas & Logo Toko', _showStoreSettingsDialog),
-buildMenuItem(context, Icons.layers, 'Manajemen Produk (Jual & Modal)', () {
+_buildMenuItem(context, Icons.layers, 'Manajemen Produk (Jual & Modal)', () {
 Navigator.push(
 context,
 MaterialPageRoute(
-builder: () => ProductManagementScreen(products: widget.products, onUpdateProducts: widget.onUpdateProducts),
+builder: (_) => ProductManagementScreen(products: widget.products, onUpdateProducts: widget.onUpdateProducts),
 ),
 );
 }),
-buildMenuItem(context, Icons.shopping_cart, 'Transaksi Penjualan (Kasir)', () {
+_buildMenuItem(context, Icons.shopping_cart, 'Transaksi Penjualan (Kasir)', () {
 Navigator.push(
 context,
 MaterialPageRoute(
-builder: () => CashierScreen(
+builder: (_) => CashierScreen(
 products: widget.products,
 storeInfo: widget.storeInfo,
 bluetooth: bluetooth,
@@ -261,11 +261,11 @@ onAddTransaction: widget.onAddTransaction,
 ),
 );
 }),
-buildMenuItem(context, Icons.account_balance_wallet, 'Keuangan & Laba Bersih', () {
+_buildMenuItem(context, Icons.account_balance_wallet, 'Keuangan & Laba Bersih', () {
 Navigator.push(
 context,
 MaterialPageRoute(
-builder: () => FinanceScreen(
+builder: (_) => FinanceScreen(
 transactions: widget.transactions,
 cashEntries: widget.cashEntries,
 onUpdateCashEntries: widget.onUpdateCashEntries,
@@ -273,7 +273,7 @@ onUpdateCashEntries: widget.onUpdateCashEntries,
 ),
 );
 }),
-buildMenuItem(context, Icons.assignment, 'Laporan Penjualan & Edit Struk', () {
+_buildMenuItem(context, Icons.assignment, 'Laporan Penjualan & Edit Struk', () {
 Navigator.push(
 context,
 MaterialPageRoute(
