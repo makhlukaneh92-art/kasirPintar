@@ -295,7 +295,7 @@ class _CashierScreenState extends State<CashierScreen> {
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Bayar', style: TextStyle(fontSize: 11)), Text('Rp ${tx.cashPaid.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11))]),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Kembali', style: TextStyle(fontSize: 11)), Text('Rp ${tx.change.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11))]),
                 const Divider(),
-                Text(widget.storeInfo.footer, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, italic: true)),
+                Text(widget.storeInfo.footer, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10,fontStyle: FontStyle.italic )),
               ],
             ),
           ),
