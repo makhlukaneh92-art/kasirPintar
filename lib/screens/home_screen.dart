@@ -7,7 +7,7 @@ import 'product_screen.dart';
 import 'cashier_screen.dart';
 import 'finance_screen.dart';
 import 'report_screen.dart';
-​class MainHomeScreen extends StatefulWidget {
+class MainHomeScreen extends StatefulWidget {
 final StoreInfo storeInfo;
 final List<Product> products;
 final List<SalesTransaction> transactions;
@@ -16,8 +16,8 @@ final Function(StoreInfo) onUpdateStore;
 final Function(List<Product>) onUpdateProducts;
 final Function(SalesTransaction) onAddTransaction;
 final Function(List<SalesTransaction>) onUpdateTransactions;
-final Function(List<CashEntry>) onUpdateCashEntries;
-​const MainHomeScreen({
+final Function(List<CashEntry>) onUpdateCashEntries;​
+  const MainHomeScreen({
 Key? key,
 required this.storeInfo,
 required this.products,
@@ -32,17 +32,17 @@ required this.onUpdateCashEntries,
 ​@override
 State<MainHomeScreen> createState() => _MainHomeScreenState();
 }
-​class _MainHomeScreenState extends State<MainHomeScreen> {
+class _MainHomeScreenState extends State<MainHomeScreen> {
 BlueThermalPrinter bluetooth = BlueThermalPrinter.instance;
 List<BluetoothDevice> _devices = [];
 BluetoothDevice? _selectedDevice;
 bool _isConnected = false;
-​@override
+  ​@override
 void initState() {
 super.initState();
 _initBluetooth();
 }
-​void _initBluetooth() async {
+  void _initBluetooth() async {
 try {
 bool? isConnected = await bluetooth.isConnected;
 List<BluetoothDevice> devices = await bluetooth.getBondedDevices();
@@ -123,7 +123,7 @@ final addressCtrl = TextEditingController(text: widget.storeInfo.address);
 final phoneCtrl = TextEditingController(text: widget.storeInfo.phone);
 final footerCtrl = TextEditingController(text: widget.storeInfo.footer);
 File? tempImage = widget.storeInfo.logoFile;
-    ​showDialog(
+    showDialog(
 context: context,
 builder: (ctx) => StatefulBuilder(
 builder: (context, setDialogState) {
