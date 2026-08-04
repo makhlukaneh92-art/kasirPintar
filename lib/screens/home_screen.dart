@@ -277,7 +277,7 @@ buildMenuItem(context, Icons.assignment, 'Laporan Penjualan & Edit Struk', () {
 Navigator.push(
 context,
 MaterialPageRoute(
-builder: () => ReportScreen(
+builder: (_) => ReportScreen(
 transactions: widget.transactions,
 products: widget.products,
 bluetooth: bluetooth,
