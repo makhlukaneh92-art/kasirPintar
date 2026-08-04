@@ -233,7 +233,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
       label: Text(label),
       selected: isSelected,
       selectedColor: const Color(0xFF00897B),
-      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black80, fontWeight: FontWeight.bold),
+      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
       onSelected: (selected) {
         if (selected) {
           setState(() {
