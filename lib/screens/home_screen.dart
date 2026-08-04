@@ -16,7 +16,7 @@ final Function(StoreInfo) onUpdateStore;
 final Function(List<Product>) onUpdateProducts;
 final Function(SalesTransaction) onAddTransaction;
 final Function(List<SalesTransaction>) onUpdateTransactions;
-final Function(List<CashEntry>) onUpdateCashEntries;​
+final Function(List<CashEntry>) onUpdateCashEntries;
   const MainHomeScreen({
 Key? key,
 required this.storeInfo,
@@ -29,7 +29,7 @@ required this.onAddTransaction,
 required this.onUpdateTransactions,
 required this.onUpdateCashEntries,
 }) : super(key: key);
-​@override
+@override
 State<MainHomeScreen> createState() => _MainHomeScreenState();
 }
 class _MainHomeScreenState extends State<MainHomeScreen> {
@@ -37,7 +37,7 @@ BlueThermalPrinter bluetooth = BlueThermalPrinter.instance;
 List<BluetoothDevice> _devices = [];
 BluetoothDevice? _selectedDevice;
 bool _isConnected = false;
-  ​@override
+  @override
 void initState() {
 super.initState();
 _initBluetooth();
@@ -54,7 +54,7 @@ _isConnected = isConnected ?? false;
 debugPrint("Bluetooth error: $e");
 }
 }
-  ​void _showPrinterDialog() {
+  void _showPrinterDialog() {
 showDialog(
 context: context,
 builder: (ctx) => AlertDialog(

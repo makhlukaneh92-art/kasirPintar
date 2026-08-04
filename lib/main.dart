@@ -6,22 +6,22 @@ runApp(const KasirPintarApp());
 }
 class KasirPintarApp extends StatefulWidget {
 const KasirPintarApp({Key? key}) : super(key: key);
-  ​@override
+  @override
 State<KasirPintarApp> createState() => _KasirPintarAppState();
 }
-​class _KasirPintarAppState extends State<KasirPintarApp> {
+class _KasirPintarAppState extends State<KasirPintarApp> {
 StoreInfo storeInfo = StoreInfo(
 name: 'TOKO KASIR PINTAR',
 address: 'Jl. Merdeka No. 123, Jakarta',
 phone: '081234567890',
 footer: 'Terima kasih atas kunjungan Anda!',
 );
-​List<Product> products = [
+List<Product> products = [
 Product(id: '1', name: 'Kopi Susu', sellingPrice: 15000, modalPrice: 9000, stock: 45),
 Product(id: '2', name: 'Roti Bakar', sellingPrice: 12000, modalPrice: 7000, stock: 27),
 Product(id: '3', name: 'baso cimol', sellingPrice: 12000, modalPrice: 6000, stock: 192),
 ];
-  ​List<SalesTransaction> transactions = [];
+  List<SalesTransaction> transactions = [];
 List<CashEntry> cashEntries = [];
   @override
 Widget build(BuildContext context) {
