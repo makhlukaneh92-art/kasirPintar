@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'customer_screen.dart';
 import 'product_screen.dart';
 import 'cashier_screen.dart';
-import 'report_screen.dart';
+import 'finance_screen.dart';
+import 'sales_report_screen.dart';
 import 'store_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -102,17 +103,17 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ReportScreen()),
+                  MaterialPageRoute(builder: (context) => const FinanceScreen()),
                 );
               },
             ),
             _buildMenuItem(
               icon: Icons.assignment,
-              title: 'Laporan Penjualan & Struk',
+              title: 'Laporan Penjualan & Edit Struk',
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ReportScreen()),
+                  MaterialPageRoute(builder: (context) => const SalesReportScreen()),
                 );
               },
             ),
