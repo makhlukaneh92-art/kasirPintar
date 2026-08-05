@@ -1,4 +1,4 @@
-import 'dart0:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,20 +24,16 @@ class _CashierScreenState extends State<CashierScreen> {
   List<ProductModel> _allProducts = [];
   List<ProductModel> _filteredProducts = [];
   List<CustomerModel> _allCustomers = [];
-  List<CustomerModel> _filteredCustomers = [];
 
   final Map<int, int> _cart = {}; // productId -> quantity
   CustomerModel? _selectedCustomer;
   bool _isLoading = true;
 
-  // Search & Input Controllers
   final TextEditingController _searchProductController = TextEditingController();
-  final TextEditingController _searchCustomerController = TextEditingController();
   final TextEditingController _discountController = TextEditingController(text: '0');
   
   String _paymentStatus = 'LUNAS'; // LUNAS, KREDIT, BELUM LUNAS
 
-  // Identitas Toko dari SharedPreferences
   String _storeName = 'TOKO KASIR PINTAR';
   String _storeAddress = '';
   String _storePhone = '';
@@ -66,7 +62,6 @@ class _CashierScreenState extends State<CashierScreen> {
       _allProducts = products;
       _filteredProducts = products;
       _allCustomers = customers;
-      _filteredCustomers = customers;
       _isLoading = false;
     });
   }
@@ -133,7 +128,6 @@ class _CashierScreenState extends State<CashierScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  // Dialog Edit Qty & Diskon
   void _showEditCartDialog(ProductModel product) {
     final qtyController = TextEditingController(text: '${_cart[product.id!] ?? 1}');
     showDialog(
@@ -171,7 +165,6 @@ class _CashierScreenState extends State<CashierScreen> {
     );
   }
 
-  // Dialog Preview & Konfirmasi Struk Pembayaran
   void _showReceiptPreviewDialog() {
     final now = DateTime.now();
     final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(now);
@@ -184,7 +177,6 @@ class _CashierScreenState extends State<CashierScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Logo Toko
               if (_storeLogo != null && File(_storeLogo!).existsSync())
                 Image.file(File(_storeLogo!), height: 60, fit: BoxFit.contain)
               else
@@ -196,7 +188,6 @@ class _CashierScreenState extends State<CashierScreen> {
               if (_storePhone.isNotEmpty) Text('Telp: $_storePhone', style: const TextStyle(fontSize: 11)),
               const Divider(thickness: 1),
 
-              // Info Transaksi
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -211,7 +202,6 @@ class _CashierScreenState extends State<CashierScreen> {
               ),
               const Divider(),
 
-              // Rincian Barang
               ..._cart.entries.map((entry) {
                 final product = _allProducts.firstWhere((p) => p.id == entry.key);
                 final qty = entry.value;
@@ -342,7 +332,6 @@ class _CashierScreenState extends State<CashierScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. Baris Pilih Pelanggan (Searchable)
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: DropdownButtonFormField<CustomerModel>(
@@ -359,8 +348,6 @@ class _CashierScreenState extends State<CashierScreen> {
                     onChanged: (val) => setState(() => _selectedCustomer = val),
                   ),
                 ),
-
-                // 2. Baris Pencarian Produk
                 Padding(
                   padding: const EdgeInsets.horizontal(8.0),
                   child: TextField(
@@ -375,8 +362,6 @@ class _CashierScreenState extends State<CashierScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-
-                // 3. Grid Produk Tersedia
                 Expanded(
                   flex: 3,
                   child: GridView.builder(
@@ -433,15 +418,11 @@ class _CashierScreenState extends State<CashierScreen> {
                     },
                   ),
                 ),
-
                 const Divider(thickness: 2),
-
-                // 4. Panel Input Diskon & Status Pembayaran
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
                   child: Row(
                     children: [
-                      // Diskon Input
                       Expanded(
                         child: TextField(
                           controller: _discountController,
@@ -455,8 +436,6 @@ class _CashierScreenState extends State<CashierScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-
-                      // Status Pembayaran Dropdown
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: _paymentStatus,
@@ -476,8 +455,6 @@ class _CashierScreenState extends State<CashierScreen> {
                     ],
                   ),
                 ),
-
-                // 5. Panel Pembayaran & Tombol Checkout Preview
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: const BoxDecoration(
