@@ -129,7 +129,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     String currentStatus = trx.paymentStatus;
     int? selectedCustId = trx.customerId;
 
-    // Buat mutable list untuk item
     List<TransactionItemModel> tempItems = trx.items.map((e) => TransactionItemModel(
       id: e.id,
       transactionId: e.transactionId,
@@ -145,8 +144,64 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          double calcTotal() {
+          double calcSubtotal() {
             return tempItems.fold(0, (sum, item) => sum + item.subtotal);
+          }
+
+          // Pertahankan selisih diskon asli jika ada
+          double discount = (trx.subtotal - trx.totalAmount) > 0 ? (trx.subtotal - trx.totalAmount) : 0;
+          double calcTotal() {
+            double sub = calcSubtotal();
+            double tot = sub - discount;
+            return tot < 0 ? 0 : tot;
+          }
+
+          void showQuantityInputDialog(int idx, TransactionItemModel item) {
+            final controller = TextEditingController(text: item.quantity.toString());
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text('Ubah Jumlah - ${item.productName}', style: const TextStyle(fontSize: 15)),
+                content: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Jumlah Kuantitas',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('BATAL')),
+                  ElevatedButton(
+                    onPressed: () {
+                      int? newQty = int.tryParse(controller.text);
+                      if (newQty != null && newQty > 0) {
+                        setDialogState(() {
+                          tempItems[idx] = TransactionItemModel(
+                            id: item.id,
+                            transactionId: item.transactionId,
+                            productId: item.productId,
+                            productName: item.productName,
+                            quantity: newQty,
+                            buyPrice: item.buyPrice,
+                            sellPrice: item.sellPrice,
+                            subtotal: newQty * item.sellPrice,
+                          );
+                        });
+                      } else if (newQty == 0) {
+                        setDialogState(() {
+                          tempItems.removeAt(idx);
+                        });
+                      }
+                      Navigator.pop(ctx);
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
+                    child: const Text('SIMPAN'),
+                  )
+                ],
+              ),
+            );
           }
 
           return AlertDialog(
@@ -188,7 +243,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  const Text('Daftar Produk:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Daftar Produk (Klik angka untuk ubah):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const Divider(),
                   ...tempItems.asMap().entries.map((entry) {
                     int idx = entry.key;
@@ -207,7 +262,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 22),
                             onPressed: () {
                               setDialogState(() {
                                 if (item.quantity > 1) {
@@ -228,9 +283,24 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                               });
                             },
                           ),
-                          Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          // BISA DIKLIK UNTUK INPUT ANGKA MANUAL
+                          InkWell(
+                            onTap: () => showQuantityInputDialog(idx, item),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(4),
+                                color: Colors.grey.shade100,
+                              ),
+                              child: Text(
+                                '${item.quantity}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B)),
+                              ),
+                            ),
+                          ),
                           IconButton(
-                            icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
+                            icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 22),
                             onPressed: () {
                               setDialogState(() {
                                 int newQty = item.quantity + 1;
@@ -268,22 +338,29 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                 onPressed: tempItems.isEmpty
                     ? null
                     : () async {
-                        double total = calcTotal();
+                        double sub = calcSubtotal();
+                        double tot = calcTotal();
                         final updatedTrx = TransactionModel(
                           id: trx.id,
                           customerId: selectedCustId,
                           paymentStatus: currentStatus,
-                          subtotal: total,
-                          totalAmount: total,
+                          subtotal: sub,
+                          totalAmount: tot,
                           transactionDate: trx.transactionDate,
                           items: tempItems,
                         );
 
+                        // Simpan Perubahan ke Database
                         await _transactionRepo.createTransaction(updatedTrx);
+                        if (!mounted) return;
                         Navigator.pop(context);
                         await _loadData();
 
-                        // Tampilkan Preview Struk
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Perubahan struk berhasil disimpan!'), backgroundColor: Colors.green),
+                        );
+
+                        // Tampilkan Preview Struk Baru
                         _showReceiptPreviewDialog(updatedTrx);
                       },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
@@ -301,6 +378,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     String custName = _getCustomerName(trx.customerId);
     String dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
         .format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
+    
+    double discount = trx.subtotal - trx.totalAmount;
 
     showDialog(
       context: context,
@@ -361,6 +440,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   Text(_formatRupiah(trx.subtotal), style: const TextStyle(fontSize: 12)),
                 ],
               ),
+              // TAMPILKAN BARIS DISKON JIKA ADA DISKON
+              if (discount > 0)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Diskon:', style: TextStyle(fontSize: 12, color: Colors.red)),
+                    Text('-${_formatRupiah(discount)}', style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -432,6 +520,33 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         ),
       );
     }
+  }
+
+  // --- FUNGI HAPUS TRANSAKSI ---
+  void _confirmDeleteTransaction(TransactionModel trx) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('Apakah Anda yakin ingin menghapus riwayat transaksi #${trx.id}? Action ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('BATAL')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _transactionRepo.deleteTransaction(trx.id);
+              await _loadData();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Transaksi berhasil dihapus'), backgroundColor: Colors.red),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('HAPUS'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -509,22 +624,32 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                     }),
                                     const Divider(),
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        OutlinedButton.icon(
-                                          onPressed: () => _showEditReceiptDialog(trx),
-                                          icon: const Icon(Icons.edit, size: 16),
-                                          label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
+                                        // TOMBOL HAPUS TRANSAKSI
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                          tooltip: 'Hapus Transaksi',
+                                          onPressed: () => _confirmDeleteTransaction(trx),
                                         ),
-                                        const SizedBox(width: 8),
-                                        ElevatedButton.icon(
-                                          onPressed: () => _showReceiptPreviewDialog(trx),
-                                          icon: const Icon(Icons.print, size: 16),
-                                          label: const Text('Cetak Struk', style: TextStyle(fontSize: 12)),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF00796B),
-                                            foregroundColor: Colors.white,
-                                          ),
+                                        Row(
+                                          children: [
+                                            OutlinedButton.icon(
+                                              onPressed: () => _showEditReceiptDialog(trx),
+                                              icon: const Icon(Icons.edit, size: 16),
+                                              label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ElevatedButton.icon(
+                                              onPressed: () => _showReceiptPreviewDialog(trx),
+                                              icon: const Icon(Icons.print, size: 16),
+                                              label: const Text('Cetak Struk', style: TextStyle(fontSize: 12)),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF00796B),
+                                                foregroundColor: Colors.white,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
