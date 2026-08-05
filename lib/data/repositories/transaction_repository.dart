@@ -1,11 +1,14 @@
-import 'package:kasir_pintar/data/datasources/database_helper.dart';
 import '../models/transaction_model.dart';
+// Mencoba mengimpor DatabaseHelper dari lokasi-lokasi yang umum di project Anda
+import '../helpers/database_helper.dart';
 
 class TransactionRepository {
-  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  Future<dynamic> _getDb() async {
+    return await DatabaseHelper.instance.database;
+  }
 
   Future<int> createTransaction(TransactionModel transaction) async {
-    final db = await _dbHelper.database;
+    final db = await _getDb();
     
     // Simpan transaksi utama
     int id = await db.insert('transactions', transaction.toMap());
@@ -28,7 +31,7 @@ class TransactionRepository {
   }
 
   Future<List<TransactionModel>> getTransactions() async {
-    final db = await _dbHelper.database;
+    final db = await _getDb();
     final List<Map<String, dynamic>> maps = await db.query('transactions', orderBy: 'transaction_date DESC');
 
     List<TransactionModel> transactions = [];
@@ -49,7 +52,7 @@ class TransactionRepository {
   }
 
   Future<void> deleteTransaction(dynamic id) async {
-    final db = await _dbHelper.database;
+    final db = await _getDb();
     await db.delete(
       'transaction_items',
       where: 'transaction_id = ?',
