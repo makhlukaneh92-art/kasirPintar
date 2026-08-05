@@ -9,9 +9,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
-  blue_thermal_printer: ^1.2.3
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  intl: ^0.18.1
+  
+  # Pustaka Baru untuk Logo & Printer Bluetooth:
   image_picker: ^1.0.7
+  shared_preferences: ^2.2.2
+  blue_thermal_printer: ^1.2.3
   
   # Package Tambahan Utama:
   sqflite: ^2.3.0       # Untuk Database Lokal SQLite
