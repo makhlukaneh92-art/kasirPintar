@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/transaction_model.dart';
+import '../../data/models/customer_model.dart';
+import '../../data/models/product_model.dart';
 import '../../data/repositories/transaction_repository.dart';
+import '../../data/repositories/customer_repository.dart';
 import '../../services/printer_service.dart';
 
 enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
@@ -15,24 +20,48 @@ class SalesReportScreen extends StatefulWidget {
 
 class _SalesReportScreenState extends State<SalesReportScreen> {
   final TransactionRepository _transactionRepo = TransactionRepository();
+  final CustomerRepository _customerRepo = CustomerRepository();
+
   List<TransactionModel> _allTransactions = [];
   List<TransactionModel> _filteredTransactions = [];
+  List<CustomerModel> _customers = [];
 
   DateFilter _selectedFilter = DateFilter.today;
   String _searchQuery = '';
   bool _isLoading = true;
 
+  // Header toko
+  String _storeName = 'Kasir Pintar';
+  String _storeAddress = '';
+  String _storePhone = '';
+  String _storeFooter = 'Terima Kasih Atas Kunjungan Anda!';
+  String? _logoPath;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadStoreInfo();
+  }
+
+  Future<void> _loadStoreInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _storeName = prefs.getString('store_name') ?? 'Kasir Pintar';
+      _storeAddress = prefs.getString('store_address') ?? '';
+      _storePhone = prefs.getString('store_phone') ?? '';
+      _storeFooter = prefs.getString('store_footer') ?? 'Terima Kasih Atas Kunjungan Anda!';
+      _logoPath = prefs.getString('store_logo');
+    });
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final list = await _transactionRepo.getTransactions();
+    final customerList = await _customerRepo.getCustomers();
     setState(() {
       _allTransactions = list;
+      _customers = customerList;
       _isLoading = false;
     });
     _applyFilter();
@@ -71,7 +100,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       result = result.where((trx) {
         final idMatch = trx.id.toLowerCase().contains(_searchQuery.toLowerCase());
         final itemMatch = trx.items.any((item) => item.productName.toLowerCase().contains(_searchQuery.toLowerCase()));
-        return idMatch || itemMatch;
+        final custName = _getCustomerName(trx.customerId);
+        final custMatch = custName.toLowerCase().contains(_searchQuery.toLowerCase());
+        return idMatch || itemMatch || custMatch;
       }).toList();
     }
 
@@ -80,71 +111,287 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     });
   }
 
+  String _getCustomerName(String? customerId) {
+    if (customerId == null || customerId.isEmpty) return 'Umum';
+    try {
+      final cust = _customers.firstWhere((c) => c.id == customerId);
+      return cust.name;
+    } catch (_) {
+      return customerId;
+    }
+  }
+
   String _formatRupiah(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  void _showEditReceiptDialog(TransactionModel trx, int indexInFilteredList) {
+  // --- DIALOG EDIT STRUK ---
+  void _showEditReceiptDialog(TransactionModel trx) {
     String currentStatus = trx.paymentStatus;
+    String? selectedCustId = trx.customerId;
+    List<TransactionItemModel> tempItems = trx.items.map((e) => TransactionItemModel(
+      id: e.id,
+      transactionId: e.transactionId,
+      productId: e.productId,
+      productName: e.productName,
+      quantity: e.quantity,
+      buyPrice: e.buyPrice,
+      sellPrice: e.sellPrice,
+      subtotal: e.subtotal,
+    )).toList();
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double calcTotal() {
+            return tempItems.fold(0, (sum, item) => sum + item.subtotal);
+          }
+
           return AlertDialog(
-            title: Text('Edit Struk #${trx.id}'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Ubah Status Pembayaran:'),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: currentStatus,
-                  isExpanded: true,
-                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                  items: const [
-                    DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-                    DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
-                    DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => currentStatus = val);
-                  },
-                ),
-              ],
+            title: Text('Edit Struk #${trx.id}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Status Pembayaran:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<String>(
+                    value: currentStatus,
+                    isExpanded: true,
+                    decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                    items: const [
+                      DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+                      DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
+                      DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => currentStatus = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Pelanggan:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<String?>(
+                    value: _customers.any((c) => c.id == selectedCustId) ? selectedCustId : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                    hint: const Text('Umum'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('Umum')),
+                      ..._customers.map((c) => DropdownMenuItem<String?>(value: c.id, child: Text(c.name))),
+                    ],
+                    onChanged: (val) {
+                      setDialogState(() => selectedCustId = val);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Daftar Produk:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Divider(),
+                  ...tempItems.asMap().entries.map((entry) {
+                    int idx = entry.key;
+                    var item = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                Text('@ ${_formatRupiah(item.sellPrice)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                            onPressed: () {
+                              setDialogState(() {
+                                if (item.quantity > 1) {
+                                  item.quantity--;
+                                  item.subtotal = item.quantity * item.sellPrice;
+                                } else {
+                                  tempItems.removeAt(idx);
+                                }
+                              });
+                            },
+                          ),
+                          Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
+                            onPressed: () {
+                              setDialogState(() {
+                                item.quantity++;
+                                item.subtotal = item.quantity * item.sellPrice;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const Divider(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Total Baru:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(_formatRupiah(calcTotal()), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00796B), fontSize: 15)),
+                    ],
+                  )
+                ],
+              ),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('BATAL')),
               ElevatedButton(
-                onPressed: () async {
-                  final updatedTrx = TransactionModel(
-                    id: trx.id,
-                    customerId: trx.customerId,
-                    paymentStatus: currentStatus,
-                    subtotal: trx.subtotal,
-                    totalAmount: trx.totalAmount,
-                    transactionDate: trx.transactionDate,
-                    items: trx.items,
-                  );
+                onPressed: tempItems.isEmpty
+                    ? null
+                    : () async {
+                        double total = calcTotal();
+                        final updatedTrx = TransactionModel(
+                          id: trx.id,
+                          customerId: selectedCustId,
+                          paymentStatus: currentStatus,
+                          subtotal: total,
+                          totalAmount: total,
+                          transactionDate: trx.transactionDate,
+                          items: tempItems,
+                        );
 
-                  await _transactionRepo.createTransaction(updatedTrx);
+                        await _transactionRepo.createTransaction(updatedTrx);
+                        Navigator.pop(context);
+                        await _loadData();
 
-                  Navigator.pop(context);
-                  _loadData();
-                  
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Status transaksi berhasil diperbarui!'), backgroundColor: Colors.green),
-                    );
-                  }
-                },
+                        // Buka Preview Struk
+                        _showReceiptPreviewDialog(updatedTrx);
+                      },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
                 child: const Text('SIMPAN PERUBAHAN'),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  // --- DIALOG PREVIEW STRUK (SAMA SEPERTI DI KASIR) ---
+  void _showReceiptPreviewDialog(TransactionModel trx) {
+    String custName = _getCustomerName(trx.customerId);
+    String dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
+        .format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Logo Toko
+              if (_logoPath != null && File(_logoPath!).existsSync())
+                Image.file(File(_logoPath!), height: 50, fit: BoxFit.contain)
+              else
+                const Icon(Icons.store, size: 40, color: Color(0xFF00796B)),
+              const SizedBox(height: 6),
+              Text(_storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              if (_storeAddress.isNotEmpty) Text(_storeAddress, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              if (_storePhone.isNotEmpty) Text('Telp: $_storePhone', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              const Divider(),
+              
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Tgl: $dateFormatted', style: const TextStyle(fontSize: 11)),
+                  Text('Status: ${trx.paymentStatus}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Pelanggan: $custName', style: const TextStyle(fontSize: 11)),
+              ),
+              const Divider(),
+
+              // List Barang
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: trx.items.map((item) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(item.productName, style: const TextStyle(fontSize: 12))),
+                            Text('${item.quantity}x ${_formatRupiah(item.sellPrice)}', style: const TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const Divider(),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Subtotal:', style: TextStyle(fontSize: 12)),
+                  Text(_formatRupiah(trx.subtotal), style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('TOTAL:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(_formatRupiah(trx.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B))),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(_storeFooter, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
+              const SizedBox(height: 16),
+
+              // Tombol
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('BATAL', style: TextStyle(color: Color(0xFF00796B))),
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[700],
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('SIMPAN (TANPA CETAK)'),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    _printReceipt(trx);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00796B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('SIMPAN & CETAK STRUK'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -159,10 +406,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     if (!mounted) return;
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Berhasil mencetak struk ke printer thermal!'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('Berhasil mencetak struk ke printer thermal!'), backgroundColor: Colors.green),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,7 +452,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       _applyFilter();
                     },
                     decoration: const InputDecoration(
-                      hintText: 'Cari Transaksi / Nama Barang...',
+                      hintText: 'Cari Transaksi / Nama Barang / Pelanggan...',
                       prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(),
                       isDense: true,
@@ -225,6 +469,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             final trx = _filteredTransactions[index];
                             final dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
                                 .format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
+                            final custName = _getCustomerName(trx.customerId);
 
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -236,7 +481,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                     child: Icon(Icons.print_outlined, color: Colors.white),
                                   ),
                                   title: Text(_formatRupiah(trx.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text('$dateFormatted\nStatus: ${trx.paymentStatus}'),
+                                  subtitle: Text('$dateFormatted\nPelanggan: $custName | Status: ${trx.paymentStatus}'),
                                   children: [
                                     ...trx.items.map((item) {
                                       return ListTile(
@@ -251,13 +496,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: [
                                         OutlinedButton.icon(
-                                          onPressed: () => _showEditReceiptDialog(trx, index),
+                                          onPressed: () => _showEditReceiptDialog(trx),
                                           icon: const Icon(Icons.edit, size: 16),
                                           label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
                                         ),
                                         const SizedBox(width: 8),
                                         ElevatedButton.icon(
-                                          onPressed: () => _printReceipt(trx),
+                                          onPressed: () => _showReceiptPreviewDialog(trx),
                                           icon: const Icon(Icons.print, size: 16),
                                           label: const Text('Cetak Struk', style: TextStyle(fontSize: 12)),
                                           style: ElevatedButton.styleFrom(
