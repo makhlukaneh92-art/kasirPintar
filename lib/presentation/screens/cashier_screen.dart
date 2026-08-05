@@ -349,7 +349,7 @@ class _CashierScreenState extends State<CashierScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.horizontal(8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: TextField(
                     controller: _searchProductController,
                     onChanged: _filterProducts,
@@ -365,7 +365,7 @@ class _CashierScreenState extends State<CashierScreen> {
                 Expanded(
                   flex: 3,
                   child: GridView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0), // FIX: EdgeInsets.symmetric
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       childAspectRatio: 1.4,
