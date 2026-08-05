@@ -1,9 +1,8 @@
-import 'printer_screen.dart';
-import 'store_settings_screen.dart';
-import 'report_screen.dart';
-import 'cashier_screen.dart';
-import 'product_screen.dart';
 import 'customer_screen.dart';
+import 'product_screen.dart';
+import 'cashier_screen.dart';
+import 'report_screen.dart';
+import 'store_settings_screen.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -21,52 +20,13 @@ class HomeScreen extends StatelessWidget {
             icon: const Icon(Icons.store),
             onPressed: () {},
           ),
-          IconButton(
-            icon: const Icon(Icons.print),
-            onPressed: () {},
-          ),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Banner Status Printer
-            // Banner Status Printer
-GestureDetector(
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const PrinterScreen(),
-      ),
-    );
-  },
-  child: Container(
-    width: double.infinity,
-    margin: const EdgeInsets.all(16),
-    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF3E0),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFFFFB74D)),
-    ),
-    child: const Row(
-      children: [
-        Icon(Icons.print, color: Color(0xFFE65100)),
-        SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            'Printer Belum Terhubung (Ketuk untuk hubungkan)',
-            style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-        ),
-      ],
-    ),
-  ),
-),
-
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -78,65 +38,65 @@ GestureDetector(
 
             // Daftar Menu
             _buildMenuItem(
-  icon: Icons.storefront,
-  title: 'Pengaturan Identitas & Logo Toko',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const StoreSettingsScreen(),
-      ),
-    );
-  },
-),
+              icon: Icons.storefront,
+              title: 'Pengaturan Identitas & Logo Toko',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const StoreSettingsScreen(),
+                  ),
+                );
+              },
+            ),
             _buildMenuItem(
-  icon: Icons.layers,
-  title: 'Manajemen Produk (Jual & Modal)',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ProductScreen(),
-      ),
-    );
-  },
-),
+              icon: Icons.layers,
+              title: 'Manajemen Produk (Jual & Modal)',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProductScreen(),
+                  ),
+                );
+              },
+            ),
             _buildMenuItem(
-  icon: Icons.shopping_cart,
-  title: 'Transaksi Penjualan (Kasir)',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const CashierScreen(),
-      ),
-    );
-  },
-),
+              icon: Icons.shopping_cart,
+              title: 'Transaksi Penjualan (Kasir)',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CashierScreen(),
+                  ),
+                );
+              },
+            ),
             _buildMenuItem(
-  icon: Icons.account_balance_wallet,
-  title: 'Keuangan & Laba Bersih',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ReportScreen(),
-      ),
-    );
-  },
-),
-_buildMenuItem(
-  icon: Icons.assignment,
-  title: 'Laporan Penjualan & Edit Struk',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ReportScreen(),
-      ),
-    );
-  },
-),
+              icon: Icons.account_balance_wallet,
+              title: 'Keuangan & Laba Bersih',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ReportScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildMenuItem(
+              icon: Icons.assignment,
+              title: 'Laporan Penjualan & Struk',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ReportScreen(),
+                  ),
+                );
+              },
+            ),
             _buildMenuItem(
               icon: Icons.people,
               title: 'Data Pelanggan',
@@ -148,11 +108,6 @@ _buildMenuItem(
                   ),
                 );
               },
-            ),
-            _buildMenuItem(
-              icon: Icons.settings,
-              title: 'Pengaturan Aplikasi',
-              onTap: () {},
             ),
           ],
         ),
