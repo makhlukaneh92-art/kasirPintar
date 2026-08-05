@@ -83,7 +83,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  void _showEditReceiptDialog(TransactionModel trx) {
+  void _showEditReceiptDialog(TransactionModel trx, int indexInFilteredList) {
     String currentStatus = trx.paymentStatus;
 
     showDialog(
@@ -97,13 +97,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Ubah Status Pembayaran:'),
-                DropdownButton<String>(
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
                   value: currentStatus,
                   isExpanded: true,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green))),
-                    DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange))),
-                    DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red))),
+                    DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+                    DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
+                    DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
                   ],
                   onChanged: (val) {
                     if (val != null) setDialogState(() => currentStatus = val);
@@ -114,14 +116,28 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('BATAL')),
               ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    trx.paymentStatus = currentStatus;
-                  });
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Status transaksi berhasil diperbarui!')),
+                onPressed: () async {
+                  // Membuat objek baru dengan status yang diupdate
+                  final updatedTrx = TransactionModel(
+                    id: trx.id,
+                    customerId: trx.customerId,
+                    paymentStatus: currentStatus,
+                    subtotal: trx.subtotal,
+                    totalAmount: trx.totalAmount,
+                    transactionDate: trx.transactionDate,
+                    items: trx.items,
                   );
+
+                  await _transactionRepo.createTransaction(updatedTrx);
+
+                  Navigator.pop(context);
+                  _loadData(); // Reload data transaksi dari DB
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Status transaksi berhasil diperbarui!'), backgroundColor: Colors.green),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
                 child: const Text('SIMPAN PERUBAHAN'),
@@ -241,7 +257,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: [
                                         OutlinedButton.icon(
-                                          onPressed: () => _showEditReceiptDialog(trx),
+                                          onPressed: () => _showEditReceiptDialog(trx, index),
                                           icon: const Icon(Icons.edit, size: 16),
                                           label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
                                         ),
