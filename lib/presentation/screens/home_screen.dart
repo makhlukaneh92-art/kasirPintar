@@ -1,3 +1,4 @@
+import 'store_settings_screen.dart';
 import 'report_screen.dart';
 import 'cashier_screen.dart';
 import 'product_screen.dart';
@@ -65,10 +66,17 @@ class HomeScreen extends StatelessWidget {
 
             // Daftar Menu
             _buildMenuItem(
-              icon: Icons.storefront,
-              title: 'Pengaturan Identitas & Logo Toko',
-              onTap: () {},
-            ),
+  icon: Icons.storefront,
+  title: 'Pengaturan Identitas & Logo Toko',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const StoreSettingsScreen(),
+      ),
+    );
+  },
+),
             _buildMenuItem(
   icon: Icons.layers,
   title: 'Manajemen Produk (Jual & Modal)',
