@@ -14,7 +14,7 @@ dependencies:
   intl: ^0.18.1
   shared_preferences: ^2.2.2
   image_picker: ^1.0.7
-  print_bluetooth_thermal: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
