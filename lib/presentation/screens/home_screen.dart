@@ -1,3 +1,4 @@
+import 'cashier_screen.dart';
 import 'product_screen.dart';
 import 'customer_screen.dart';
 import 'package:flutter/material.dart';
@@ -80,10 +81,17 @@ class HomeScreen extends StatelessWidget {
   },
 ),
             _buildMenuItem(
-              icon: Icons.shopping_cart,
-              title: 'Transaksi Penjualan (Kasir)',
-              onTap: () {},
-            ),
+  icon: Icons.shopping_cart,
+  title: 'Transaksi Penjualan (Kasir)',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const CashierScreen(),
+      ),
+    );
+  },
+),
             _buildMenuItem(
               icon: Icons.account_balance_wallet,
               title: 'Keuangan & Laba Bersih',
