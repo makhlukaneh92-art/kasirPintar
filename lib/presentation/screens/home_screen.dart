@@ -1,3 +1,4 @@
+import 'report_screen.dart';
 import 'cashier_screen.dart';
 import 'product_screen.dart';
 import 'customer_screen.dart';
@@ -93,15 +94,29 @@ class HomeScreen extends StatelessWidget {
   },
 ),
             _buildMenuItem(
-              icon: Icons.account_balance_wallet,
-              title: 'Keuangan & Laba Bersih',
-              onTap: () {},
-            ),
-            _buildMenuItem(
-              icon: Icons.assignment,
-              title: 'Laporan Penjualan & Edit Struk',
-              onTap: () {},
-            ),
+  icon: Icons.account_balance_wallet,
+  title: 'Keuangan & Laba Bersih',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ReportScreen(),
+      ),
+    );
+  },
+),
+_buildMenuItem(
+  icon: Icons.assignment,
+  title: 'Laporan Penjualan & Edit Struk',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ReportScreen(),
+      ),
+    );
+  },
+),
             _buildMenuItem(
               icon: Icons.people,
               title: 'Data Pelanggan',
