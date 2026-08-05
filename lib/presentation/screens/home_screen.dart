@@ -6,6 +6,7 @@ import 'cashier_screen.dart';
 import 'finance_screen.dart';
 import 'sales_report_screen.dart';
 import 'store_settings_screen.dart';
+import 'printer_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -75,6 +76,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   MaterialPageRoute(builder: (context) => const StoreSettingsScreen()),
                 );
                 _loadStoreName();
+              },
+            ),
+            _buildMenuItem(
+              icon: Icons.print,
+              title: 'Pengaturan Printer Bluetooth',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PrinterSettingsScreen()),
+                );
               },
             ),
             _buildMenuItem(
