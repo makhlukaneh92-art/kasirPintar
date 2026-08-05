@@ -1,3 +1,4 @@
+import 'printer_screen.dart';
 import 'store_settings_screen.dart';
 import 'report_screen.dart';
 import 'cashier_screen.dart';
@@ -30,28 +31,39 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           children: [
             // Banner Status Printer
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFB74D)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.print, color: Color(0xFFE65100)),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Printer Belum Terhubung (Ketuk untuk hubungkan)',
-                      style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.w600, fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Banner Status Printer
+GestureDetector(
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PrinterScreen(),
+      ),
+    );
+  },
+  child: Container(
+    width: double.infinity,
+    margin: const EdgeInsets.all(16),
+    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF3E0),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFFFB74D)),
+    ),
+    child: const Row(
+      children: [
+        Icon(Icons.print, color: Color(0xFFE65100)),
+        SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'Printer Belum Terhubung (Ketuk untuk hubungkan)',
+            style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ),
+      ],
+    ),
+  ),
+),
 
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
