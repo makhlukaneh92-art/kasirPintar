@@ -55,5 +55,17 @@ class TransactionRepository {
       whereArgs: [transactionId],
     );
     return maps.map((map) => TransactionItemModel.fromMap(map)).toList();
+      Future<void> deleteTransaction(dynamic id) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete(
+      'transaction_items',
+      where: 'transaction_id = ?',
+      whereArgs: [id],
+    );
+    await db.delete(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 }
