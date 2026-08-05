@@ -6,7 +6,6 @@ import '../../data/models/transaction_model.dart';
 import '../../data/models/customer_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/customer_repository.dart';
-import '../../data/datasources/database_helper.dart';
 import '../../services/printer_service.dart';
 
 enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
@@ -518,13 +517,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
   }
 
-  // --- FUNGI HAPUS TRANSAKSI (MENGGUNAKAN DATABASE HELPER LANGSUNG) ---
-  Future<void> _deleteTransactionById(dynamic id) async {
-    final db = await DatabaseHelper.instance.database;
-    await db.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [id]);
-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
-  }
-
   void _confirmDeleteTransaction(TransactionModel trx) {
     showDialog(
       context: context,
@@ -536,7 +528,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await _deleteTransactionById(trx.id);
+              await _transactionRepo.deleteTransaction(trx.id);
               await _loadData();
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
