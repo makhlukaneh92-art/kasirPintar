@@ -14,11 +14,6 @@ dependencies:
   intl: ^0.18.1
   shared_preferences: ^2.2.2
   image_picker: ^1.0.7
-  
-  # Package Tambahan Utama:
-  sqflite: ^2.3.0       # Untuk Database Lokal SQLite
-  path: ^1.8.3          # Untuk Manajemen Path Folder Database
-  intl: ^0.19.0         # Untuk Format Rupiah (Rp) & Tanggal Laporan
 
 dev_dependencies:
   flutter_test:
