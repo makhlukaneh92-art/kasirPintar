@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _storeName, // Menampilkan nama toko secara dinamis (misal: Ndra Store)
+          _storeName,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF00796B),
@@ -47,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => const StoreSettingsScreen()),
               );
-              _loadStoreName(); // Update nama toko saat kembali dari pengaturan
+              _loadStoreName();
             },
           ),
         ],
@@ -73,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   context,
                   MaterialPageRoute(builder: (context) => const StoreSettingsScreen()),
                 );
-                _loadStoreName(); // Refresh judul saat kembali dari simpan identitas
+                _loadStoreName();
               },
             ),
             _buildMenuItem(
