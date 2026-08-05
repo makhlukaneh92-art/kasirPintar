@@ -1,17 +1,27 @@
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 import '../models/transaction_model.dart';
-// Mencoba mengimpor DatabaseHelper dari lokasi-lokasi yang umum di project Anda
-import '../helpers/database_helper.dart';
 
 class TransactionRepository {
-  Future<dynamic> _getDb() async {
-    return await DatabaseHelper.instance.database;
+  Database? _db;
+
+  Future<Database> get database async {
+    if (_db != null) return _db!;
+    _db = await _initDb();
+    return _db!;
+  }
+
+  Future<Database> _initDb() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'kasir_pintar.db');
+    return await openDatabase(path, version: 1);
   }
 
   Future<int> createTransaction(TransactionModel transaction) async {
-    final db = await _getDb();
+    final db = await database;
     
     // Simpan transaksi utama
-    int id = await db.insert('transactions', transaction.toMap());
+    int id = await db.insert('transactions', transaction.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
 
     // Hapus item lama jika ini proses update
     await db.delete(
@@ -31,7 +41,7 @@ class TransactionRepository {
   }
 
   Future<List<TransactionModel>> getTransactions() async {
-    final db = await _getDb();
+    final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('transactions', orderBy: 'transaction_date DESC');
 
     List<TransactionModel> transactions = [];
@@ -52,7 +62,7 @@ class TransactionRepository {
   }
 
   Future<void> deleteTransaction(dynamic id) async {
-    final db = await _getDb();
+    final db = await database;
     await db.delete(
       'transaction_items',
       where: 'transaction_id = ?',
