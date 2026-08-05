@@ -1,24 +1,54 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'customer_screen.dart';
 import 'product_screen.dart';
 import 'cashier_screen.dart';
 import 'report_screen.dart';
 import 'store_settings_screen.dart';
-import 'package:flutter/material.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String _storeName = 'TOKO KASIR PINTAR';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStoreName();
+  }
+
+  Future<void> _loadStoreName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _storeName = prefs.getString('store_name') ?? 'TOKO KASIR PINTAR';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TOKO KASIR PINTAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(
+          _storeName, // Menampilkan nama toko secara dinamis (misal: Ndra Store)
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.store),
-            onPressed: () {},
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StoreSettingsScreen()),
+              );
+              _loadStoreName(); // Update nama toko saat kembali dari pengaturan
+            },
           ),
         ],
       ),
@@ -35,18 +65,15 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Daftar Menu
             _buildMenuItem(
               icon: Icons.storefront,
               title: 'Pengaturan Identitas & Logo Toko',
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const StoreSettingsScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const StoreSettingsScreen()),
                 );
+                _loadStoreName(); // Refresh judul saat kembali dari simpan identitas
               },
             ),
             _buildMenuItem(
@@ -55,9 +82,7 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const ProductScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const ProductScreen()),
                 );
               },
             ),
@@ -67,9 +92,7 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const CashierScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const CashierScreen()),
                 );
               },
             ),
@@ -79,9 +102,7 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const ReportScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const ReportScreen()),
                 );
               },
             ),
@@ -91,9 +112,7 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const ReportScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const ReportScreen()),
                 );
               },
             ),
@@ -103,9 +122,7 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const CustomerScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const CustomerScreen()),
                 );
               },
             ),
