@@ -1,4 +1,4 @@
-import '../database_helper.dart';
+import 'package:kasir_pintar/data/datasources/database_helper.dart';
 import '../models/transaction_model.dart';
 
 class TransactionRepository {
@@ -42,7 +42,6 @@ class TransactionRepository {
 
       List<TransactionItemModel> items = itemMaps.map((i) => TransactionItemModel.fromMap(i)).toList();
 
-      // Menggunakan named parameter items: items agar cocok dengan TransactionModel Anda
       transactions.add(TransactionModel.fromMap(map, items: items));
     }
 
