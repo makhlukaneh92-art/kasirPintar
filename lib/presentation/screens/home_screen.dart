@@ -1,3 +1,4 @@
+import 'customer_screen.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -86,9 +87,15 @@ class HomeScreen extends StatelessWidget {
               onTap: () {},
             ),
             _buildMenuItem(
-              icon: Icons.people,
-              title: 'Data Pelanggan',
-              onTap: () {},
+  icon: Icons.people,
+  title: 'Data Pelanggan',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CustomerScreen()),
+    );
+  },
+),
             ),
             _buildMenuItem(
               icon: Icons.settings,
