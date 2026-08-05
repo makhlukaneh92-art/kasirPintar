@@ -35,8 +35,8 @@ class HomeScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFFFB74D)),
               ),
-              child: Row(
-                children: const [
+              child: const Row(
+                children: [
                   Icon(Icons.print, color: Color(0xFFE65100)),
                   SizedBox(width: 12),
                   Expanded(
@@ -87,15 +87,16 @@ class HomeScreen extends StatelessWidget {
               onTap: () {},
             ),
             _buildMenuItem(
-  icon: Icons.people,
-  title: 'Data Pelanggan',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const CustomerScreen()),
-    );
-  },
-),
+              icon: Icons.people,
+              title: 'Data Pelanggan',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CustomerScreen(),
+                  ),
+                );
+              },
             ),
             _buildMenuItem(
               icon: Icons.settings,
