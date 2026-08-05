@@ -1,3 +1,4 @@
+import 'product_screen.dart';
 import 'customer_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -67,10 +68,17 @@ class HomeScreen extends StatelessWidget {
               onTap: () {},
             ),
             _buildMenuItem(
-              icon: Icons.layers,
-              title: 'Manajemen Produk (Jual & Modal)',
-              onTap: () {},
-            ),
+  icon: Icons.layers,
+  title: 'Manajemen Produk (Jual & Modal)',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ProductScreen(),
+      ),
+    );
+  },
+),
             _buildMenuItem(
               icon: Icons.shopping_cart,
               title: 'Transaksi Penjualan (Kasir)',
