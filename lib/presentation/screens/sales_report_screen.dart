@@ -6,6 +6,7 @@ import '../../data/models/transaction_model.dart';
 import '../../data/models/customer_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/customer_repository.dart';
+import '../../data/datasources/database_helper.dart';
 import '../../services/printer_service.dart';
 
 enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
@@ -148,7 +149,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             return tempItems.fold(0, (sum, item) => sum + item.subtotal);
           }
 
-          // Pertahankan selisih diskon asli jika ada
           double discount = (trx.subtotal - trx.totalAmount) > 0 ? (trx.subtotal - trx.totalAmount) : 0;
           double calcTotal() {
             double sub = calcSubtotal();
@@ -283,7 +283,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                               });
                             },
                           ),
-                          // BISA DIKLIK UNTUK INPUT ANGKA MANUAL
                           InkWell(
                             onTap: () => showQuantityInputDialog(idx, item),
                             child: Container(
@@ -350,7 +349,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                           items: tempItems,
                         );
 
-                        // Simpan Perubahan ke Database
                         await _transactionRepo.createTransaction(updatedTrx);
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -360,7 +358,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                           const SnackBar(content: Text('Perubahan struk berhasil disimpan!'), backgroundColor: Colors.green),
                         );
 
-                        // Tampilkan Preview Struk Baru
                         _showReceiptPreviewDialog(updatedTrx);
                       },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
@@ -440,7 +437,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   Text(_formatRupiah(trx.subtotal), style: const TextStyle(fontSize: 12)),
                 ],
               ),
-              // TAMPILKAN BARIS DISKON JIKA ADA DISKON
               if (discount > 0)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -522,19 +518,25 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
   }
 
-  // --- FUNGI HAPUS TRANSAKSI ---
+  // --- FUNGI HAPUS TRANSAKSI (MENGGUNAKAN DATABASE HELPER LANGSUNG) ---
+  Future<void> _deleteTransactionById(dynamic id) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [id]);
+    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
   void _confirmDeleteTransaction(TransactionModel trx) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('Apakah Anda yakin ingin menghapus riwayat transaksi #${trx.id}? Action ini tidak dapat dibatalkan.'),
+        content: Text('Apakah Anda yakin ingin menghapus riwayat transaksi #${trx.id}? Tindakan ini tidak dapat dibatalkan.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('BATAL')),
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await _transactionRepo.deleteTransaction(trx.id);
+              await _deleteTransactionById(trx.id);
               await _loadData();
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
@@ -626,7 +628,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        // TOMBOL HAPUS TRANSAKSI
                                         IconButton(
                                           icon: const Icon(Icons.delete_outline, color: Colors.red),
                                           tooltip: 'Hapus Transaksi',
