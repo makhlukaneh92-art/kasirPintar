@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/transaction_model.dart';
 import '../../data/models/customer_model.dart';
-import '../../data/models/product_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../services/printer_service.dart';
@@ -98,7 +97,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
     if (_searchQuery.isNotEmpty) {
       result = result.where((trx) {
-        final idMatch = trx.id.toLowerCase().contains(_searchQuery.toLowerCase());
+        final idMatch = trx.id.toString().toLowerCase().contains(_searchQuery.toLowerCase());
         final itemMatch = trx.items.any((item) => item.productName.toLowerCase().contains(_searchQuery.toLowerCase()));
         final custName = _getCustomerName(trx.customerId);
         final custMatch = custName.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -111,13 +110,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     });
   }
 
-  String _getCustomerName(String? customerId) {
-    if (customerId == null || customerId.isEmpty) return 'Umum';
+  String _getCustomerName(dynamic customerId) {
+    if (customerId == null) return 'Umum';
     try {
-      final cust = _customers.firstWhere((c) => c.id == customerId);
+      final cust = _customers.firstWhere((c) => c.id.toString() == customerId.toString());
       return cust.name;
     } catch (_) {
-      return customerId;
+      return 'Umum';
     }
   }
 
@@ -128,7 +127,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // --- DIALOG EDIT STRUK ---
   void _showEditReceiptDialog(TransactionModel trx) {
     String currentStatus = trx.paymentStatus;
-    String? selectedCustId = trx.customerId;
+    int? selectedCustId = trx.customerId;
+
+    // Buat mutable list untuk item
     List<TransactionItemModel> tempItems = trx.items.map((e) => TransactionItemModel(
       id: e.id,
       transactionId: e.transactionId,
@@ -173,14 +174,14 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   const SizedBox(height: 12),
                   const Text('Pelanggan:', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  DropdownButtonFormField<String?>(
+                  DropdownButtonFormField<int?>(
                     value: _customers.any((c) => c.id == selectedCustId) ? selectedCustId : null,
                     isExpanded: true,
                     decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                     hint: const Text('Umum'),
                     items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('Umum')),
-                      ..._customers.map((c) => DropdownMenuItem<String?>(value: c.id, child: Text(c.name))),
+                      const DropdownMenuItem<int?>(value: null, child: Text('Umum')),
+                      ..._customers.map((c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.name))),
                     ],
                     onChanged: (val) {
                       setDialogState(() => selectedCustId = val);
@@ -210,8 +211,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             onPressed: () {
                               setDialogState(() {
                                 if (item.quantity > 1) {
-                                  item.quantity--;
-                                  item.subtotal = item.quantity * item.sellPrice;
+                                  int newQty = item.quantity - 1;
+                                  tempItems[idx] = TransactionItemModel(
+                                    id: item.id,
+                                    transactionId: item.transactionId,
+                                    productId: item.productId,
+                                    productName: item.productName,
+                                    quantity: newQty,
+                                    buyPrice: item.buyPrice,
+                                    sellPrice: item.sellPrice,
+                                    subtotal: newQty * item.sellPrice,
+                                  );
                                 } else {
                                   tempItems.removeAt(idx);
                                 }
@@ -223,8 +233,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 20),
                             onPressed: () {
                               setDialogState(() {
-                                item.quantity++;
-                                item.subtotal = item.quantity * item.sellPrice;
+                                int newQty = item.quantity + 1;
+                                tempItems[idx] = TransactionItemModel(
+                                  id: item.id,
+                                  transactionId: item.transactionId,
+                                  productId: item.productId,
+                                  productName: item.productName,
+                                  quantity: newQty,
+                                  buyPrice: item.buyPrice,
+                                  sellPrice: item.sellPrice,
+                                  subtotal: newQty * item.sellPrice,
+                                );
                               });
                             },
                           ),
@@ -264,7 +283,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                         Navigator.pop(context);
                         await _loadData();
 
-                        // Buka Preview Struk
+                        // Tampilkan Preview Struk
                         _showReceiptPreviewDialog(updatedTrx);
                       },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
@@ -277,7 +296,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     );
   }
 
-  // --- DIALOG PREVIEW STRUK (SAMA SEPERTI DI KASIR) ---
+  // --- DIALOG PREVIEW STRUK ---
   void _showReceiptPreviewDialog(TransactionModel trx) {
     String custName = _getCustomerName(trx.customerId);
     String dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
@@ -292,7 +311,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Logo Toko
               if (_logoPath != null && File(_logoPath!).existsSync())
                 Image.file(File(_logoPath!), height: 50, fit: BoxFit.contain)
               else
@@ -316,7 +334,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               ),
               const Divider(),
 
-              // List Barang
               Flexible(
                 child: SingleChildScrollView(
                   child: Column(
@@ -355,7 +372,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               Text(_storeFooter, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
               const SizedBox(height: 16),
 
-              // Tombol
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('BATAL', style: TextStyle(color: Color(0xFF00796B))),
