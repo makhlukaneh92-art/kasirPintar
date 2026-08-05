@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/models/transaction_model.dart';
 import '../../data/repositories/transaction_repository.dart';
+import '../../services/printer_service.dart';
 
 enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
 
@@ -117,7 +118,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('BATAL')),
               ElevatedButton(
                 onPressed: () async {
-                  // Membuat objek baru dengan status yang diupdate
                   final updatedTrx = TransactionModel(
                     id: trx.id,
                     customerId: trx.customerId,
@@ -131,7 +131,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   await _transactionRepo.createTransaction(updatedTrx);
 
                   Navigator.pop(context);
-                  _loadData(); // Reload data transaksi dari DB
+                  _loadData();
                   
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -149,35 +149,29 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     );
   }
 
-  void _printReceipt(TransactionModel trx) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.print, color: Color(0xFF00796B)),
-            SizedBox(width: 8),
-            Text('Cetak Struk Thermal'),
-          ],
-        ),
-        content: Text('Mencari printer bluetooth & mengirimkan data cetak struk #${trx.id}...'),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Perintah cetak berhasil dikirim ke printer thermal!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+  void _printReceipt(TransactionModel trx) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mengirimkan data ke printer bluetooth...')),
     );
+
+    bool success = await PrinterService.printReceipt(trx);
+
+    if (!mounted) return;
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Berhasil mencetak struk ke printer thermal!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mencetak struk. Buka menu Pengaturan Printer Bluetooth untuk menghubungkan.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
