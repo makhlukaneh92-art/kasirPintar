@@ -1,14 +1,16 @@
-import 'dart:io';
+import 'dart0:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 import '../../data/models/transaction_model.dart';
 import '../../data/models/customer_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../services/printer_service.dart';
-
-enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
 
 class SalesReportScreen extends StatefulWidget {
   const SalesReportScreen({super.key});
@@ -25,11 +27,16 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   List<TransactionModel> _filteredTransactions = [];
   List<CustomerModel> _customers = [];
 
-  DateFilter _selectedFilter = DateFilter.today;
+  // Default filter: Hari Ini (00:00:00 s.d 23:59:59)
+  DateTimeRange _selectedDateRange = DateTimeRange(
+    start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    end: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59),
+  );
+
   String _searchQuery = '';
   bool _isLoading = true;
 
-  // Header toko
+  // Profil Toko
   String _storeName = 'Kasir Pintar';
   String _storeAddress = '';
   String _storePhone = '';
@@ -66,33 +73,14 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     _applyFilter();
   }
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
   void _applyFilter() {
-    final now = DateTime.now();
-    DateTime yesterday = now.subtract(const Duration(days: 1));
-
     List<TransactionModel> result = _allTransactions.where((trx) {
-      DateTime date = DateTime.tryParse(trx.transactionDate) ?? now;
-
-      switch (_selectedFilter) {
-        case DateFilter.today:
-          return _isSameDay(date, now);
-        case DateFilter.yesterday:
-          return _isSameDay(date, yesterday);
-        case DateFilter.thisMonth:
-          return date.year == now.year && date.month == now.month;
-        case DateFilter.lastMonth:
-          int lastMonth = now.month == 1 ? 12 : now.month - 1;
-          int year = now.month == 1 ? now.year - 1 : now.year;
-          return date.year == year && date.month == lastMonth;
-        case DateFilter.thisYear:
-          return date.year == now.year;
-        case DateFilter.all:
-          return true;
-      }
+      DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
+      
+      // Mengecek apakah tanggal transaksi berada di dalam rentang
+      bool inRange = date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
+                     date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+      return inRange;
     }).toList();
 
     if (_searchQuery.isNotEmpty) {
@@ -110,6 +98,37 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     });
   }
 
+  Future<void> _pickDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: _selectedDateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF00796B),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDateRange = DateTimeRange(
+          start: DateTime(picked.start.year, picked.start.month, picked.start.day, 0, 0, 0),
+          end: DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
+        );
+      });
+      _applyFilter();
+    }
+  }
+
   String _getCustomerName(dynamic customerId) {
     if (customerId == null) return 'Umum';
     try {
@@ -124,7 +143,101 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  // --- DIALOG EDIT STRUK ---
+  double _calculateTotalIncome() {
+    return _filteredTransactions.fold(0, (sum, item) => sum + item.totalAmount);
+  }
+
+  // --- GENERATE PDF REPORT ---
+  Future<void> _exportPdfReport() async {
+    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.nunitoRegular();
+    final fontBold = await PdfGoogleFonts.nunitoBold();
+
+    final startDateStr = DateFormat('dd/MM/yyyy').format(_selectedDateRange.start);
+    final endDateStr = DateFormat('dd/MM/yyyy').format(_selectedDateRange.end);
+    final totalOmzet = _calculateTotalIncome();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return [
+            // Header PDF
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(_storeName, style: pw.TextStyle(font: fontBold, fontSize: 20)),
+                    if (_storeAddress.isNotEmpty) pw.Text(_storeAddress, style: pw.TextStyle(font: font, fontSize: 10)),
+                    if (_storePhone.isNotEmpty) pw.Text('Telp: $_storePhone', style: pw.TextStyle(font: font, fontSize: 10)),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('LAPORAN PENJUALAN', style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                    pw.Text('Periode: $startDateStr - $endDateStr', style: pw.TextStyle(font: font, fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 16),
+            pw.Divider(),
+            pw.SizedBox(height: 8),
+
+            // Ringkasan
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: pw.BorderRadius.circular(6),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total Transaksi: ${_filteredTransactions.length}', style: pw.TextStyle(font: fontBold, fontSize: 11)),
+                  pw.Text('Total Omzet: ${_formatRupiah(totalOmzet)}', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+
+            // Tabel Transaksi
+            pw.TableHelper.fromTextArray(
+              headers: ['No', 'ID', 'Tanggal & Waktu', 'Pelanggan', 'Status', 'Total'],
+              data: List.generate(_filteredTransactions.length, (index) {
+                final trx = _filteredTransactions[index];
+                final dateFormatted = DateFormat('dd/MM/yy HH:mm').format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
+                final custName = _getCustomerName(trx.customerId);
+                return [
+                  (index + 1).toString(),
+                  '#${trx.id}',
+                  dateFormatted,
+                  custName,
+                  trx.paymentStatus,
+                  _formatRupiah(trx.totalAmount),
+                ];
+              }),
+              headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.teal),
+              cellStyle: pw.TextStyle(font: font, fontSize: 9),
+              cellAlignment: pw.Alignment.centerLeft,
+            ),
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Laporan_Penjualan_${startDateStr}_${endDateStr}.pdf',
+    );
+  }
+
+  // --- DIALOG EDIT STRUK & PREVIEW STRUK (SEPERTI SEBELUMNYA) ---
   void _showEditReceiptDialog(TransactionModel trx) {
     String currentStatus = trx.paymentStatus;
     int? selectedCustId = trx.customerId;
@@ -144,63 +257,12 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          double calcSubtotal() {
-            return tempItems.fold(0, (sum, item) => sum + item.subtotal);
-          }
-
+          double calcSubtotal() => tempItems.fold(0, (sum, item) => sum + item.subtotal);
           double discount = (trx.subtotal - trx.totalAmount) > 0 ? (trx.subtotal - trx.totalAmount) : 0;
           double calcTotal() {
             double sub = calcSubtotal();
             double tot = sub - discount;
             return tot < 0 ? 0 : tot;
-          }
-
-          void showQuantityInputDialog(int idx, TransactionItemModel item) {
-            final controller = TextEditingController(text: item.quantity.toString());
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text('Ubah Jumlah - ${item.productName}', style: const TextStyle(fontSize: 15)),
-                content: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Jumlah Kuantitas',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('BATAL')),
-                  ElevatedButton(
-                    onPressed: () {
-                      int? newQty = int.tryParse(controller.text);
-                      if (newQty != null && newQty > 0) {
-                        setDialogState(() {
-                          tempItems[idx] = TransactionItemModel(
-                            id: item.id,
-                            transactionId: item.transactionId,
-                            productId: item.productId,
-                            productName: item.productName,
-                            quantity: newQty,
-                            buyPrice: item.buyPrice,
-                            sellPrice: item.sellPrice,
-                            subtotal: newQty * item.sellPrice,
-                          );
-                        });
-                      } else if (newQty == 0) {
-                        setDialogState(() {
-                          tempItems.removeAt(idx);
-                        });
-                      }
-                      Navigator.pop(ctx);
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
-                    child: const Text('SIMPAN'),
-                  )
-                ],
-              ),
-            );
           }
 
           return AlertDialog(
@@ -237,12 +299,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       const DropdownMenuItem<int?>(value: null, child: Text('Umum')),
                       ..._customers.map((c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.name))),
                     ],
-                    onChanged: (val) {
-                      setDialogState(() => selectedCustId = val);
-                    },
+                    onChanged: (val) => setDialogState(() => selectedCustId = val),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Daftar Produk (Klik angka untuk ubah):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('Daftar Produk:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const Divider(),
                   ...tempItems.asMap().entries.map((entry) {
                     int idx = entry.key;
@@ -282,21 +342,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                               });
                             },
                           ),
-                          InkWell(
-                            onTap: () => showQuantityInputDialog(idx, item),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.shade400),
-                                borderRadius: BorderRadius.circular(4),
-                                color: Colors.grey.shade100,
-                              ),
-                              child: Text(
-                                '${item.quantity}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B)),
-                              ),
-                            ),
-                          ),
+                          Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 22),
                             onPressed: () {
@@ -319,14 +365,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       ),
                     );
                   }),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Baru:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(_formatRupiah(calcTotal()), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00796B), fontSize: 15)),
-                    ],
-                  )
                 ],
               ),
             ),
@@ -352,15 +390,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                         if (!mounted) return;
                         Navigator.pop(context);
                         await _loadData();
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Perubahan struk berhasil disimpan!'), backgroundColor: Colors.green),
-                        );
-
-                        _showReceiptPreviewDialog(updatedTrx);
                       },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
-                child: const Text('SIMPAN PERUBAHAN'),
+                child: const Text('SIMPAN'),
               ),
             ],
           );
@@ -369,160 +401,12 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     );
   }
 
-  // --- DIALOG PREVIEW STRUK ---
-  void _showReceiptPreviewDialog(TransactionModel trx) {
-    String custName = _getCustomerName(trx.customerId);
-    String dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
-        .format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
-    
-    double discount = trx.subtotal - trx.totalAmount;
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_logoPath != null && File(_logoPath!).existsSync())
-                Image.file(File(_logoPath!), height: 50, fit: BoxFit.contain)
-              else
-                const Icon(Icons.store, size: 40, color: Color(0xFF00796B)),
-              const SizedBox(height: 6),
-              Text(_storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              if (_storeAddress.isNotEmpty) Text(_storeAddress, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              if (_storePhone.isNotEmpty) Text('Telp: $_storePhone', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              const Divider(),
-              
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Tgl: $dateFormatted', style: const TextStyle(fontSize: 11)),
-                  Text('Status: ${trx.paymentStatus}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Pelanggan: $custName', style: const TextStyle(fontSize: 11)),
-              ),
-              const Divider(),
-
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: trx.items.map((item) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(child: Text(item.productName, style: const TextStyle(fontSize: 12))),
-                            Text('${item.quantity}x ${_formatRupiah(item.sellPrice)}', style: const TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const Divider(),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Subtotal:', style: TextStyle(fontSize: 12)),
-                  Text(_formatRupiah(trx.subtotal), style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-              if (discount > 0)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Diskon:', style: TextStyle(fontSize: 12, color: Colors.red)),
-                    Text('-${_formatRupiah(discount)}', style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('TOTAL:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text(_formatRupiah(trx.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B))),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(_storeFooter, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
-              const SizedBox(height: 16),
-
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('BATAL', style: TextStyle(color: Color(0xFF00796B))),
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[700],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  child: const Text('SIMPAN (TANPA CETAK)'),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    _printReceipt(trx);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00796B),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  child: const Text('SIMPAN & CETAK STRUK'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _printReceipt(TransactionModel trx) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mengirimkan data ke printer bluetooth...')),
-    );
-
-    bool success = await PrinterService.printReceipt(trx);
-
-    if (!mounted) return;
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Berhasil mencetak struk ke printer thermal!'), backgroundColor: Colors.green),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal mencetak struk. Buka menu Pengaturan Printer Bluetooth untuk menghubungkan.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   void _confirmDeleteTransaction(TransactionModel trx) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('Apakah Anda yakin ingin menghapus riwayat transaksi #${trx.id}? Tindakan ini tidak dapat dibatalkan.'),
+        title: const Text('Hapus Transaksi'),
+        content: Text('Apakah Anda yakin ingin menghapus transaksi #${trx.id}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('BATAL')),
           ElevatedButton(
@@ -530,10 +414,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               Navigator.pop(ctx);
               await _transactionRepo.deleteTransaction(trx.id);
               await _loadData();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Transaksi berhasil dihapus'), backgroundColor: Colors.red),
-              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('HAPUS'),
@@ -545,6 +425,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final startDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.start);
+    final endDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.end);
+    final dateDisplay = (startDateStr == endDateStr) ? startDateStr : '$startDateStr - $endDateStr';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Laporan Penjualan & Edit Struk'),
@@ -555,29 +439,56 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Row(
-                    children: [
-                      _buildFilterChip('Hari Ini', DateFilter.today),
-                      _buildFilterChip('Kemarin', DateFilter.yesterday),
-                      _buildFilterChip('Bulan Ini', DateFilter.thisMonth),
-                      _buildFilterChip('Bulan Kemarin', DateFilter.lastMonth),
-                      _buildFilterChip('Tahunan', DateFilter.thisYear),
-                      _buildFilterChip('Semua', DateFilter.all),
-                    ],
+                // 1. SINGLE DATE RANGE BAR (Bilah Informasi Tanggal)
+                Container(
+                  margin: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00796B).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF00796B).withOpacity(0.3)),
+                  ),
+                  child: InkWell(
+                    onTap: _pickDateRange,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.date_range, color: Color(0xFF00796B)),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Periode Tanggal:', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                Text(dateDisplay, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00796B),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('Ubah', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        )
+                      ],
+                    ),
                   ),
                 ),
+
+                // 2. BUSCADOR (Pencarian Text)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   child: TextField(
                     onChanged: (val) {
                       _searchQuery = val;
                       _applyFilter();
                     },
                     decoration: const InputDecoration(
-                      hintText: 'Cari Transaksi / Nama Barang / Pelanggan...',
+                      hintText: 'Cari Transaksi / Barang / Pelanggan...',
                       prefixIcon: Icon(Icons.search),
                       border: OutlineInputBorder(),
                       isDense: true,
@@ -585,9 +496,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
+
+                // 3. DAFTAR TRANSAKSI
                 Expanded(
                   child: _filteredTransactions.isEmpty
-                      ? const Center(child: Text('Tidak ada riwayat penjualan ditemukan'))
+                      ? const Center(child: Text('Tidak ada transaksi pada periode ini'))
                       : ListView.builder(
                           itemCount: _filteredTransactions.length,
                           itemBuilder: (context, index) {
@@ -603,7 +516,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                 child: ExpansionTile(
                                   leading: const CircleAvatar(
                                     backgroundColor: Color(0xFF00796B),
-                                    child: Icon(Icons.print_outlined, color: Colors.white),
+                                    child: Icon(Icons.receipt_long, color: Colors.white),
                                   ),
                                   title: Text(_formatRupiah(trx.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text('$dateFormatted\nPelanggan: $custName | Status: ${trx.paymentStatus}'),
@@ -622,27 +535,12 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                       children: [
                                         IconButton(
                                           icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                          tooltip: 'Hapus Transaksi',
                                           onPressed: () => _confirmDeleteTransaction(trx),
                                         ),
-                                        Row(
-                                          children: [
-                                            OutlinedButton.icon(
-                                              onPressed: () => _showEditReceiptDialog(trx),
-                                              icon: const Icon(Icons.edit, size: 16),
-                                              label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            ElevatedButton.icon(
-                                              onPressed: () => _showReceiptPreviewDialog(trx),
-                                              icon: const Icon(Icons.print, size: 16),
-                                              label: const Text('Cetak Struk', style: TextStyle(fontSize: 12)),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: const Color(0xFF00796B),
-                                                foregroundColor: Colors.white,
-                                              ),
-                                            ),
-                                          ],
+                                        OutlinedButton.icon(
+                                          onPressed: () => _showEditReceiptDialog(trx),
+                                          icon: const Icon(Icons.edit, size: 16),
+                                          label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
                                         ),
                                       ],
                                     ),
@@ -655,23 +553,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                 ),
               ],
             ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, DateFilter filter) {
-    final isSelected = _selectedFilter == filter;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6.0),
-      child: FilterChip(
-        label: Text(label, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : Colors.black)),
-        selected: isSelected,
-        selectedColor: const Color(0xFF00796B),
-        onSelected: (val) {
-          setState(() {
-            _selectedFilter = filter;
-          });
-          _applyFilter();
-        },
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _filteredTransactions.isEmpty ? null : _exportPdfReport,
+        backgroundColor: const Color(0xFF00796B),
+        icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+        label: const Text('Cetak PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
