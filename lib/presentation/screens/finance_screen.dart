@@ -316,7 +316,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF00796B),
                           foregroundColor: Colors.white,
-                          isDense: true,
+                          visualDensity: VisualDensity.compact,
                         ),
                         onPressed: _showAddExpenseDialog,
                         icon: const Icon(Icons.add, size: 16),
