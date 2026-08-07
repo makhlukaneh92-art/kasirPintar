@@ -38,32 +38,41 @@ class _FinanceScreenState extends State<FinanceScreen> {
     super.dispose();
   }
 
-  Future<void> _loadFinanceData() async {
+    Future<void> _loadFinanceData() async {
     setState(() => _isLoading = true);
     
-    final allTrx = await _transactionRepo.getTransactions();
-    final allExpenses = await _transactionRepo.getExpenses();
+    try {
+      final allTrx = await _transactionRepo.getTransactions();
+      final allExpenses = await _transactionRepo.getExpenses();
 
-    // Filter transaksi berdasarkan range tanggal
-    final filteredTrx = allTrx.where((trx) {
-      DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
-      return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
-          date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
-    }).toList();
+      // Filter transaksi berdasarkan range tanggal
+      final filteredTrx = allTrx.where((trx) {
+        DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
+        return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
+            date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+      }).toList();
 
-    // Filter pengeluaran berdasarkan range tanggal
-    final filteredExpenses = allExpenses.where((exp) {
-      DateTime date = DateTime.tryParse(exp['expense_date'] ?? '') ?? DateTime.now();
-      return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
-          date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
-    }).toList();
+      // Filter pengeluaran berdasarkan range tanggal
+      final filteredExpenses = allExpenses.where((exp) {
+        DateTime date = DateTime.tryParse(exp['expense_date'] ?? '') ?? DateTime.now();
+        return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
+            date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+      }).toList();
 
-    setState(() {
-      _transactions = filteredTrx;
-      _expenses = filteredExpenses;
-      _isLoading = false;
-    });
-  }
+      if (mounted) {
+        setState(() {
+          _transactions = filteredTrx;
+          _expenses = filteredExpenses;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading finance data: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+    }
 
   Future<void> _pickDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
