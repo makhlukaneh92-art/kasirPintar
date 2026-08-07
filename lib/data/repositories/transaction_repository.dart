@@ -19,7 +19,7 @@ class TransactionRepository {
       path,
       version: 1,
       onCreate: (db, version) async {
-        // 1. Buat Tabel Produk (Aman jika belum dibuat di repo lain)
+        // 1. Tabel Produk
         await db.execute('''
           CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +30,7 @@ class TransactionRepository {
           )
         ''');
 
-        // 2. Buat Tabel Utama Transaksi
+        // 2. Tabel Utama Transaksi
         await db.execute('''
           CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +42,7 @@ class TransactionRepository {
           )
         ''');
 
-        // 3. Buat Tabel Item Transaksi
+        // 3. Tabel Item Transaksi
         await db.execute('''
           CREATE TABLE IF NOT EXISTS transaction_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +55,16 @@ class TransactionRepository {
             subtotal REAL NOT NULL
           )
         ''');
+
+        // 4. Tabel Pengeluaran Operasional (Expenses)
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            amount REAL NOT NULL,
+            expense_date TEXT NOT NULL
+          )
+        ''');
       },
     );
   }
@@ -65,7 +75,6 @@ class TransactionRepository {
     int generatedId = 0;
 
     await db.transaction((txn) async {
-      // Simpan header transaksi
       generatedId = await txn.insert(
         'transactions',
         transaction.toMap(),
@@ -74,20 +83,17 @@ class TransactionRepository {
 
       final String actualTrxId = transaction.id?.toString() ?? generatedId.toString();
 
-      // Hapus item transaksi lama jika ada
       await txn.delete(
         'transaction_items',
         where: 'transaction_id = ?',
         whereArgs: [actualTrxId],
       );
 
-      // Simpan item transaksi baru & potong stok produk
       for (var item in transaction.items) {
         var itemMap = item.toMap();
         itemMap['transaction_id'] = actualTrxId;
         await txn.insert('transaction_items', itemMap);
 
-        // Potong stok produk
         await txn.rawUpdate(
           'UPDATE products SET stock = stock - ? WHERE id = ?',
           [item.quantity, item.productId],
@@ -104,7 +110,6 @@ class TransactionRepository {
     final String trxId = transaction.id.toString();
 
     await db.transaction((txn) async {
-      // Ambil item transaksi lama untuk mengembalikan stok barang ke semula
       final List<Map<String, dynamic>> oldItemsMap = await txn.query(
         'transaction_items',
         where: 'transaction_id = ?',
@@ -115,14 +120,12 @@ class TransactionRepository {
         final int oldProductId = oldMap['product_id'];
         final int oldQuantity = oldMap['quantity'];
 
-        // Kembalikan stok produk
         await txn.rawUpdate(
           'UPDATE products SET stock = stock + ? WHERE id = ?',
           [oldQuantity, oldProductId],
         );
       }
 
-      // Update data utama transaksi
       await txn.update(
         'transactions',
         transaction.toMap(),
@@ -130,20 +133,17 @@ class TransactionRepository {
         whereArgs: [trxId],
       );
 
-      // Hapus item transaksi lama
       await txn.delete(
         'transaction_items',
         where: 'transaction_id = ?',
         whereArgs: [trxId],
       );
 
-      // Simpan item transaksi baru & potong stok produk baru
       for (var item in transaction.items) {
         var itemMap = item.toMap();
         itemMap['transaction_id'] = trxId;
         await txn.insert('transaction_items', itemMap);
 
-        // Potong stok produk baru
         await txn.rawUpdate(
           'UPDATE products SET stock = stock - ? WHERE id = ?',
           [item.quantity, item.productId],
@@ -210,5 +210,25 @@ class TransactionRepository {
         whereArgs: [id.toString()],
       );
     });
+  }
+
+  // --- 5. MANAJEMEN PENGELUARAN OPERASIONAL (EXPENSES) ---
+  Future<int> createExpense(String title, double amount) async {
+    final db = await database;
+    return await db.insert('expenses', {
+      'title': title,
+      'amount': amount,
+      'expense_date': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getExpenses() async {
+    final db = await database;
+    return await db.query('expenses', orderBy: 'expense_date DESC');
+  }
+
+  Future<void> deleteExpense(int id) async {
+    final db = await database;
+    await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
   }
 }
