@@ -24,28 +24,37 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _initPrinter() async {
     setState(() => _isLoading = true);
-    List<BluetoothDevice> devices = await PrinterService.getPairedDevices();
-    bool connected = await PrinterService.isConnected();
+    try {
+      List<BluetoothDevice> devices = await PrinterService.getPairedDevices();
+      bool connected = await PrinterService.isConnected();
 
-    final prefs = await SharedPreferences.getInstance();
-    String? savedAddress = prefs.getString('printer_address');
+      final prefs = await SharedPreferences.getInstance();
+      String? savedAddress = prefs.getString('printer_address');
 
-    BluetoothDevice? current;
-    if (savedAddress != null && savedAddress.isNotEmpty) {
-      for (var d in devices) {
-        if (d.address == savedAddress) {
-          current = d;
-          break;
+      BluetoothDevice? current;
+      if (savedAddress != null && savedAddress.isNotEmpty) {
+        for (var d in devices) {
+          if (d.address == savedAddress) {
+            current = d;
+            break;
+          }
         }
       }
-    }
 
-    setState(() {
-      _devices = devices;
-      _selectedDevice = current ?? (devices.isNotEmpty ? devices.first : null);
-      _isConnected = connected;
-      _isLoading = false;
-    });
+      setState(() {
+        _devices = devices;
+        _selectedDevice = current ?? (devices.isNotEmpty ? devices.first : null);
+        _isConnected = connected;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat perangkat Bluetooth: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _connectPrinter() async {
@@ -97,6 +106,39 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     }
   }
 
+  Future<void> _testPrint() async {
+    if (!_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Printer belum terhubung!'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String storeName = prefs.getString('store_name') ?? 'TOKO KASIR PINTAR';
+
+      BlueThermalPrinter bluetooth = BlueThermalPrinter.instance;
+      bluetooth.printCustom(storeName, 2, 1);
+      bluetooth.printCustom("TEST PRINT STRUK", 1, 1);
+      bluetooth.printCustom("Printer Berhasil Terhubung!", 0, 1);
+      bluetooth.printNewLine();
+      bluetooth.printNewLine();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test print terkirim ke printer!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal test print: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -140,7 +182,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                       ? const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12.0),
                           child: Text(
-                            'Tidak ada printer bluetooth ditemukan. Pastikan Anda sudah melalukan "Pairing" Bluetooth Printer di Pengaturan HP Anda terlebih dahulu.',
+                            'Tidak ada printer bluetooth ditemukan. Pastikan Anda sudah melakukan "Pairing" Bluetooth Printer di Pengaturan HP Anda terlebih dahulu.',
                             style: TextStyle(color: Colors.red),
                           ),
                         )
@@ -191,6 +233,21 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                       )
                     ],
                   ),
+                  if (_isConnected) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _testPrint,
+                        icon: const Icon(Icons.receipt, color: Color(0xFF00796B)),
+                        label: const Text('TEST PRINT STRUK', style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF00796B)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
