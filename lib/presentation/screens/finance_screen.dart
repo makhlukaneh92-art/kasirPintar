@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 import '../../data/models/transaction_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 
@@ -16,12 +20,13 @@ class _FinanceScreenState extends State<FinanceScreen> {
   bool _isLoading = true;
   List<TransactionModel> _transactions = [];
   List<Map<String, dynamic>> _expenses = [];
+  List<Map<String, dynamic>> _otherIncomes = [];
 
-  final TextEditingController _expenseTitleController = TextEditingController();
-  final TextEditingController _expenseAmountController = TextEditingController();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
 
   DateTimeRange _selectedDateRange = DateTimeRange(
-    start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 0, 0, 0),
     end: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59),
   );
 
@@ -33,36 +38,54 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   @override
   void dispose() {
-    _expenseTitleController.dispose();
-    _expenseAmountController.dispose();
+    _titleController.dispose();
+    _amountController.dispose();
     super.dispose();
   }
 
-    Future<void> _loadFinanceData() async {
+  Future<void> _loadFinanceData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    
+
     try {
       final allTrx = await _transactionRepo.getTransactions();
       final allExpenses = await _transactionRepo.getExpenses();
+      final allIncomes = await _transactionRepo.getOtherIncomes();
 
-      // Filter transaksi berdasarkan range tanggal
+      final start = _selectedDateRange.start;
+      final end = _selectedDateRange.end;
+
+      // Filter Penjualan
       final filteredTrx = allTrx.where((trx) {
-        DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
-        return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
-            date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+        DateTime? date = DateTime.tryParse(trx.transactionDate);
+        if (date == null) return false;
+        return date.isAfter(start.subtract(const Duration(seconds: 1))) &&
+            date.isBefore(end.add(const Duration(seconds: 1)));
       }).toList();
 
-      // Filter pengeluaran berdasarkan range tanggal
+      // Filter Pengeluaran
       final filteredExpenses = allExpenses.where((exp) {
-        DateTime date = DateTime.tryParse(exp['expense_date'] ?? '') ?? DateTime.now();
-        return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
-            date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+        String rawDate = exp['expense_date'] ?? '';
+        DateTime? date = DateTime.tryParse(rawDate);
+        if (date == null) return true;
+        return date.isAfter(start.subtract(const Duration(seconds: 1))) &&
+            date.isBefore(end.add(const Duration(seconds: 1)));
+      }).toList();
+
+      // Filter Pemasukan
+      final filteredIncomes = allIncomes.where((inc) {
+        String rawDate = inc['income_date'] ?? '';
+        DateTime? date = DateTime.tryParse(rawDate);
+        if (date == null) return true;
+        return date.isAfter(start.subtract(const Duration(seconds: 1))) &&
+            date.isBefore(end.add(const Duration(seconds: 1)));
       }).toList();
 
       if (mounted) {
         setState(() {
           _transactions = filteredTrx;
           _expenses = filteredExpenses;
+          _otherIncomes = filteredIncomes;
         });
       }
     } catch (e) {
@@ -72,7 +95,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
         setState(() => _isLoading = false);
       }
     }
-    }
+  }
 
   Future<void> _pickDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
@@ -105,23 +128,18 @@ class _FinanceScreenState extends State<FinanceScreen> {
     }
   }
 
-  // --- PERHITUNGAN KEUANGAN ---
-  
-  // 1. Omzet Tunai (Hanya transaksi LUNAS yang masuk ke kas)
   double _calculateTotalOmzet() {
     return _transactions
         .where((trx) => trx.paymentStatus == 'LUNAS')
         .fold(0, (sum, trx) => sum + trx.totalAmount);
   }
 
-  // 2. Total Piutang (KREDIT / BELUM LUNAS - Uang tertahan di pelanggan)
   double _calculateTotalPiutang() {
     return _transactions
         .where((trx) => trx.paymentStatus == 'KREDIT' || trx.paymentStatus == 'BELUM LUNAS')
         .fold(0, (sum, trx) => sum + trx.totalAmount);
   }
 
-  // 3. Total HPP (Modal barang yang terjual dari transaksi LUNAS)
   double _calculateTotalHPP() {
     double totalHpp = 0;
     for (var trx in _transactions.where((t) => t.paymentStatus == 'LUNAS')) {
@@ -140,35 +158,42 @@ class _FinanceScreenState extends State<FinanceScreen> {
     return _expenses.fold(0, (sum, exp) => sum + (exp['amount'] as num).toDouble());
   }
 
+  double _calculateTotalOtherIncomes() {
+    return _otherIncomes.fold(0, (sum, inc) => sum + (inc['amount'] as num).toDouble());
+  }
+
   double _calculateLabaBersih() {
-    return _calculateLabaKotor() - _calculateTotalExpenses();
+    return (_calculateLabaKotor() - _calculateTotalExpenses()) + _calculateTotalOtherIncomes();
   }
 
   String _formatRupiah(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-    void _showAddExpenseDialog() {
-    _expenseTitleController.clear();
-    _expenseAmountController.clear();
+  void _showAddDialog({required bool isIncome}) {
+    _titleController.clear();
+    _amountController.clear();
+
+    final titleLabel = isIncome ? 'Tambah Pemasukan Kas' : 'Tambah Pengeluaran Operasional';
+    final descLabel = isIncome ? 'Keterangan / Sumber Pemasukan' : 'Keterangan / Nama Pengeluaran';
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Tambah Pengeluaran'),
+        title: Text(titleLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: _expenseTitleController,
-              decoration: const InputDecoration(
-                labelText: 'Keterangan / Nama Pengeluaran',
-                border: OutlineInputBorder(),
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: descLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _expenseAmountController,
+              controller: _amountController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Jumlah (Rp)',
@@ -185,43 +210,41 @@ class _FinanceScreenState extends State<FinanceScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00796B),
+              backgroundColor: isIncome ? Colors.green.shade700 : const Color(0xFF00796B),
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
-              final String title = _expenseTitleController.text.trim();
+              final String title = _titleController.text.trim();
               
-              // Membersihkan format angka (menghapus titik, koma, Rp, spasi)
-              String cleanAmountStr = _expenseAmountController.text
-                  .replaceAll('.', '')
-                  .replaceAll(',', '')
-                  .replaceAll('Rp', '')
+              // Sanitasi Input Angka (Aman dari Titik, Koma, Spasi, & Tulisan Rp)
+              String cleanAmountStr = _amountController.text
+                  .replaceAll(RegExp(r'[^0-9]'), '')
                   .trim();
 
               final double? amount = double.tryParse(cleanAmountStr);
 
               if (title.isNotEmpty && amount != null && amount > 0) {
-                // 1. Simpan ke Database
-                await _transactionRepo.createExpense(title, amount);
-                
+                if (isIncome) {
+                  await _transactionRepo.createOtherIncome(title, amount);
+                } else {
+                  await _transactionRepo.createExpense(title, amount);
+                }
+
                 if (!mounted) return;
                 Navigator.pop(ctx);
+                await _loadFinanceData();
 
-                // 2. Refresh Tampilan
-                _loadFinanceData();
-
-                // 3. Notifikasi Berhasil
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Pengeluaran berhasil disimpan!'),
+                  SnackBar(
+                    content: Text('${isIncome ? "Pemasukan" : "Pengeluaran"} berhasil disimpan!'),
                     backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
                   ),
                 );
               } else {
-                // Notifikasi jika input tidak valid
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Mohon isi nama dan nominal pengeluaran dengan benar.'),
+                    content: Text('Mohon isi keterangan dan nominal angka dengan benar.'),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -232,7 +255,100 @@ class _FinanceScreenState extends State<FinanceScreen> {
         ],
       ),
     );
-    }
+  }
+
+  // --- FUNGSI CETAK PDF ---
+  Future<void> _generatePdfReport() async {
+    final pdf = pw.Document();
+
+    final startDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.start);
+    final endDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.end);
+    final dateDisplay = (startDateStr == endDateStr) ? startDateStr : '$startDateStr - $endDateStr';
+
+    final totalOmzet = _calculateTotalOmzet();
+    final totalHpp = _calculateTotalHPP();
+    final labaKotor = _calculateLabaKotor();
+    final totalExpenses = _calculateTotalExpenses();
+    final totalIncomes = _calculateTotalOtherIncomes();
+    final labaBersih = _calculateLabaBersih();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            cross: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('LAPORAN KEUANGAN & LABA BERSIH',
+                  style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 4),
+              pw.Text('Periode: $dateDisplay', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 10),
+
+              // RINGKASAN REKAPITULASI
+              pw.Text('1. Ringkasan Keuangan', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.teal700),
+                data: [
+                  ['Komponen', 'Nilai (Rp)'],
+                  ['Total Omzet Penjualan (Lunas)', _formatRupiah(totalOmzet)],
+                  ['Total HPP / Modal Barang', '- ${_formatRupiah(totalHpp)}'],
+                  ['Laba Kotor', _formatRupiah(labaKotor)],
+                  ['Total Pengeluaran Operasional', '- ${_formatRupiah(totalExpenses)}'],
+                  ['Total Pemasukan Kas Lainnya', '+ ${_formatRupiah(totalIncomes)}'],
+                  ['ESTIMASI LABA BERSIH', _formatRupiah(labaBersih)],
+                ],
+              ),
+
+              pw.SizedBox(height: 16),
+
+              // DETAIL PENGELUARAN OPERASIONAL
+              pw.Text('2. Detail Pengeluaran Operasional', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              _expenses.isEmpty
+                  ? pw.Text('Tidak ada pengeluaran operasional pada periode ini.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600))
+                  : pw.Table.fromTextArray(
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      data: [
+                        ['Keterangan', 'Nominal'],
+                        ..._expenses.map((e) => [
+                              e['title'] ?? '-',
+                              _formatRupiah((e['amount'] as num).toDouble()),
+                            ]),
+                      ],
+                    ),
+
+              pw.SizedBox(height: 16),
+
+              // DETAIL PEMASUKAN LAINNYA
+              pw.Text('3. Detail Pemasukan Kas Lainnya', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              _otherIncomes.isEmpty
+                  ? pw.Text('Tidak ada pemasukan lain pada periode ini.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600))
+                  : pw.Table.fromTextArray(
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      data: [
+                        ['Keterangan / Sumber', 'Nominal'],
+                        ..._otherIncomes.map((i) => [
+                              i['title'] ?? '-',
+                              _formatRupiah((i['amount'] as num).toDouble()),
+                            ]),
+                      ],
+                    ),
+            ],
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Laporan_Keuangan_$dateDisplay.pdf',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +361,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     final totalHpp = _calculateTotalHPP();
     final labaKotor = _calculateLabaKotor();
     final totalPengeluaran = _calculateTotalExpenses();
+    final totalPemasukanLain = _calculateTotalOtherIncomes();
     final labaBersih = _calculateLabaBersih();
 
     return Scaffold(
@@ -252,6 +369,13 @@ class _FinanceScreenState extends State<FinanceScreen> {
         title: const Text('Keuangan & Laba Bersih'),
         backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Cetak PDF',
+            onPressed: _generatePdfReport,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -264,7 +388,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                   InkWell(
                     onTap: _pickDateRange,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
                       decoration: BoxDecoration(
                         color: const Color(0xFF00796B).withOpacity(0.08),
                         borderRadius: BorderRadius.circular(10),
@@ -276,25 +400,25 @@ class _FinanceScreenState extends State<FinanceScreen> {
                           Row(
                             children: [
                               const Icon(Icons.date_range, color: Color(0xFF00796B)),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text('Periode Laporan:', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                  Text(dateDisplay, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                                  Text(dateDisplay, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
                                 ],
                               ),
                             ],
                           ),
-                          const Icon(Icons.edit, size: 18, color: Color(0xFF00796B)),
+                          const Icon(Icons.edit, size: 16, color: Color(0xFF00796B)),
                         ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
-                  // RINGKASAN UTAMA (LABA BERSIH)
+                  // CARD ESTIMASI LABA BERSIH
                   Card(
                     color: labaBersih >= 0 ? Colors.teal.shade700 : Colors.red.shade700,
                     elevation: 3,
@@ -323,7 +447,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                   ),
 
-                  // KARTU PIUTANG / UNPAID TRANSACTIONS (JIKA ADA)
+                  // PIUTANG
                   if (totalPiutang > 0) ...[
                     const SizedBox(height: 8),
                     Card(
@@ -336,25 +460,16 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       child: ListTile(
                         dense: true,
                         leading: const Icon(Icons.pending_actions, color: Colors.orange),
-                        title: const Text(
-                          'Piutang / Belum Lunas',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange),
-                        ),
-                        subtitle: const Text(
-                          'Uang tertahan di pelanggan (Belum Masuk Kas)',
-                          style: TextStyle(fontSize: 10),
-                        ),
-                        trailing: Text(
-                          _formatRupiah(totalPiutang),
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 13),
-                        ),
+                        title: const Text('Piutang / Belum Lunas', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
+                        subtitle: const Text('Uang tertahan di pelanggan (Belum Masuk Kas)', style: TextStyle(fontSize: 10)),
+                        trailing: Text(_formatRupiah(totalPiutang), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 13)),
                       ),
                     ),
                   ],
 
                   const SizedBox(height: 16),
 
-                  // RINCIAN LABA RUGI
+                  // RINCIAN PERHITUNGAN
                   const Text('Rincian Perhitungan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
 
@@ -385,42 +500,41 @@ class _FinanceScreenState extends State<FinanceScreen> {
                           title: const Text(' Total Pengeluaran Operasional'),
                           trailing: Text('- ${_formatRupiah(totalPengeluaran)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
                         ),
+                        const Divider(height: 1),
+                        ListTile(
+                          dense: true,
+                          title: const Text(' Total Pemasukan Kas Lainnya'),
+                          trailing: Text('+ ${_formatRupiah(totalPemasukanLain)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                        ),
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
-                  // PENGELUARAN OPERASIONAL
+                  // SECTION PENGELUARAN
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Pengeluaran Operasional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      const Text('Pengeluaran Operasional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF00796B),
                           foregroundColor: Colors.white,
                           visualDensity: VisualDensity.compact,
                         ),
-                        onPressed: _showAddExpenseDialog,
+                        onPressed: () => _showAddDialog(isIncome: false),
                         icon: const Icon(Icons.add, size: 16),
                         label: const Text('Tambah', style: TextStyle(fontSize: 12)),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 8),
-
+                  const SizedBox(height: 6),
                   _expenses.isEmpty
                       ? Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Center(
-                              child: Text(
-                                'Belum ada pengeluaran operasional yang dicatat',
-                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                              ),
-                            ),
+                            padding: const EdgeInsets.all(12.0),
+                            child: Center(child: Text('Belum ada pengeluaran operasional yang dicatat', style: TextStyle(color: Colors.grey.shade600, fontSize: 11))),
                           ),
                         )
                       : ListView.builder(
@@ -433,20 +547,17 @@ class _FinanceScreenState extends State<FinanceScreen> {
                             final String formattedDate = DateFormat('dd MMM yyyy, HH:mm').format(expDate);
 
                             return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              margin: const EdgeInsets.symmetric(vertical: 3),
                               child: ListTile(
                                 dense: true,
-                                title: Text(exp['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text(formattedDate),
+                                title: Text(exp['title'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(formattedDate, style: const TextStyle(fontSize: 10)),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      _formatRupiah((exp['amount'] as num).toDouble()),
-                                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                                    ),
+                                    Text(_formatRupiah((exp['amount'] as num).toDouble()), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                                     IconButton(
-                                      icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
+                                      icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 18),
                                       onPressed: () async {
                                         await _transactionRepo.deleteExpense(exp['id']);
                                         _loadFinanceData();
@@ -458,6 +569,85 @@ class _FinanceScreenState extends State<FinanceScreen> {
                             );
                           },
                         ),
+
+                  const SizedBox(height: 20),
+
+                  // SECTION PEMASUKAN LAINNYA
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Pemasukan Kas Lainnya', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => _showAddDialog(isIncome: true),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Tambah', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _otherIncomes.isEmpty
+                      ? Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Center(child: Text('Belum ada pemasukan lain yang dicatat', style: TextStyle(color: Colors.grey.shade600, fontSize: 11))),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _otherIncomes.length,
+                          itemBuilder: (context, index) {
+                            final inc = _otherIncomes[index];
+                            final DateTime incDate = DateTime.tryParse(inc['income_date'] ?? '') ?? DateTime.now();
+                            final String formattedDate = DateFormat('dd MMM yyyy, HH:mm').format(incDate);
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 3),
+                              child: ListTile(
+                                dense: true,
+                                title: Text(inc['title'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(formattedDate, style: const TextStyle(fontSize: 10)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(_formatRupiah((inc['amount'] as num).toDouble()), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 18),
+                                      onPressed: () async {
+                                        await _transactionRepo.deleteOtherIncome(inc['id']);
+                                        _loadFinanceData();
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                  const SizedBox(height: 30),
+
+                  // TOMBOL CETAK PDF
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00796B),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _generatePdfReport,
+                      icon: const Icon(Icons.print),
+                      label: const Text('CETAK PDF LAPORAN KEUANGAN', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
