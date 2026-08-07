@@ -40,7 +40,8 @@ class PrinterService {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  static Future<bool> printReceipt(TransactionModel trx) async {
+  // Menambahkan parameter paidAmount dan change agar bisa dicetak di struk
+  static Future<bool> printReceipt(TransactionModel trx, {double paidAmount = 0, double change = 0}) async {
     try {
       bool connected = await isConnected();
       if (!connected) {
@@ -84,7 +85,7 @@ class PrinterService {
       // Info Transaksi
       _bluetooth.printLeftRight("No. Trx:", trx.id, 1);
       _bluetooth.printLeftRight("Tanggal:", dateStr, 1);
-      _bluetooth.printLeftRight("Status:", trx.paymentStatus, 1);
+      _bluetooth.printLeftRight("Status:", trx.paymentStatus, 1); // Status tetap dicetak
       _bluetooth.printCustom("--------------------------------", 1, 1);
 
       // Detail Barang
@@ -98,11 +99,12 @@ class PrinterService {
       }
 
       _bluetooth.printCustom("--------------------------------", 1, 1);
-      if (trx.subtotal > trx.totalAmount) {
-        _bluetooth.printLeftRight("Subtotal:", _formatRupiah(trx.subtotal), 1);
-        _bluetooth.printLeftRight("Diskon:", _formatRupiah(trx.subtotal - trx.totalAmount), 1);
-      }
+      
+      // Menampilkan Total, Bayar, dan Kembalian
       _bluetooth.printLeftRight("TOTAL:", _formatRupiah(trx.totalAmount), 2);
+      _bluetooth.printLeftRight("DIBAYAR:", _formatRupiah(paidAmount), 1);
+      _bluetooth.printLeftRight("KEMBALIAN:", _formatRupiah(change), 1);
+      
       _bluetooth.printCustom("--------------------------------", 1, 1);
       _bluetooth.printCustom(storeFooter, 1, 1);
       _bluetooth.printNewLine();
