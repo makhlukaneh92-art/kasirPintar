@@ -8,6 +8,7 @@ import '../../data/models/transaction_model.dart';
 import '../../data/repositories/product_repository.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
+import '../../services/printer_service.dart';
 
 class CashierScreen extends StatefulWidget {
   const CashierScreen({super.key});
@@ -31,7 +32,8 @@ class _CashierScreenState extends State<CashierScreen> {
 
   final TextEditingController _searchProductController = TextEditingController();
   final TextEditingController _discountController = TextEditingController(text: '0');
-  
+  final TextEditingController _paidController = TextEditingController();
+
   String _paymentStatus = 'LUNAS'; // LUNAS, KREDIT, BELUM LUNAS
 
   String _storeName = 'TOKO KASIR PINTAR';
@@ -46,11 +48,19 @@ class _CashierScreenState extends State<CashierScreen> {
     _loadInitialData();
   }
 
+  @override
+  void dispose() {
+    _searchProductController.dispose();
+    _discountController.dispose();
+    _paidController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     final products = await _productRepo.getProducts();
     final customers = await _customerRepo.getCustomers();
-    
+
     final prefs = await SharedPreferences.getInstance();
     _storeName = prefs.getString('store_name') ?? 'TOKO KASIR PINTAR';
     _storeAddress = prefs.getString('store_address') ?? '';
@@ -124,6 +134,15 @@ class _CashierScreenState extends State<CashierScreen> {
     return total < 0 ? 0 : total;
   }
 
+  double get _paidAmount {
+    return double.tryParse(_paidController.text) ?? 0;
+  }
+
+  double get _changeAmount {
+    double change = _paidAmount - _finalTotalAmount;
+    return change < 0 ? 0 : change;
+  }
+
   String _formatRupiah(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
@@ -166,6 +185,16 @@ class _CashierScreenState extends State<CashierScreen> {
   }
 
   void _showReceiptPreviewDialog() {
+    if (_paymentStatus == 'LUNAS' && _paidAmount < _finalTotalAmount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Uang pembayaran kurang dari total belanja!'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final now = DateTime.now();
     final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(now);
 
@@ -242,6 +271,20 @@ class _CashierScreenState extends State<CashierScreen> {
                   Text(_formatRupiah(_finalTotalAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B))),
                 ],
               ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('DIBAYAR:'),
+                  Text(_formatRupiah(_paidAmount)),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('KEMBALIAN:'),
+                  Text(_formatRupiah(_changeAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
               const Divider(),
               Text(_storeFooter, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
             ],
@@ -302,18 +345,33 @@ class _CashierScreenState extends State<CashierScreen> {
 
     await _transactionRepo.createTransaction(transaction);
 
+    bool printSuccess = false;
+    if (shouldPrint) {
+      printSuccess = await PrinterService.printReceipt(
+        transaction,
+        paidAmount: _paidAmount,
+        change: _changeAmount,
+      );
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(shouldPrint 
-            ? 'Transaksi Berhasil Disimpan & Struk Siap Dicetak!' 
-            : 'Transaksi Berhasil Disimpan!'),
-          backgroundColor: Colors.green,
+          content: Text(
+            shouldPrint
+                ? (printSuccess
+                    ? 'Transaksi Disimpan & Struk Berhasil Dicetak!'
+                    : 'Transaksi Disimpan, tetapi Struk Gagal Dicetak (Cek Printer)')
+                : 'Transaksi Berhasil Disimpan!',
+          ),
+          backgroundColor: (shouldPrint && !printSuccess) ? Colors.orange : Colors.green,
         ),
       );
+
       setState(() {
         _cart.clear();
         _discountController.text = '0';
+        _paidController.clear();
         _selectedCustomer = null;
       });
       _loadInitialData();
@@ -365,7 +423,7 @@ class _CashierScreenState extends State<CashierScreen> {
                 Expanded(
                   flex: 3,
                   child: GridView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0), // FIX: EdgeInsets.symmetric
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       childAspectRatio: 1.4,
@@ -450,6 +508,46 @@ class _CashierScreenState extends State<CashierScreen> {
                             DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
                           ],
                           onChanged: (val) => setState(() => _paymentStatus = val!),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _paidController,
+                          keyboardType: TextInputType.number,
+                          onChanged: (val) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Uang Dibayar (Rp)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(4),
+                            color: Colors.grey[100],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Kembalian:', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                              Text(
+                                _formatRupiah(_changeAmount),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
