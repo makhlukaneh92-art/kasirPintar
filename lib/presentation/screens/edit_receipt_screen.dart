@@ -22,7 +22,6 @@ class EditReceiptScreen extends StatefulWidget {
 
 class _EditReceiptScreenState extends State<EditReceiptScreen> {
   final TransactionRepository _transactionRepo = TransactionRepository();
-  final PrinterService _printerService = PrinterService();
 
   late String _currentStatus;
   late int? _selectedCustId;
@@ -364,7 +363,8 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
                         transactionDate: widget.transaction.transactionDate,
                         items: _items,
                       );
-                      await _printerService.printReceipt(updatedTrx);
+                      // Menggunakan static method PrinterService
+                      await PrinterService.printReceipt(updatedTrx);
                     },
                   ),
                 ),
