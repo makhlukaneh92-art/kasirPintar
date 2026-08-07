@@ -19,30 +19,49 @@ class TransactionRepository {
 
   Future<int> createTransaction(TransactionModel transaction) async {
     final db = await database;
-    
-    // Simpan transaksi utama
-    int id = await db.insert('transactions', transaction.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    int generatedId = 0;
 
-    // Hapus item lama jika ini proses update
-    await db.delete(
-      'transaction_items',
-      where: 'transaction_id = ?',
-      whereArgs: [transaction.id ?? id],
-    );
+    // Gunakan db.transaction agar operasi simpan & potong stok bersifat atomik (aman)
+    await db.transaction((txn) async {
+      // 1. Simpan header transaksi utama
+      generatedId = await txn.insert(
+        'transactions',
+        transaction.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    // Simpan item transaksi
-    for (var item in transaction.items) {
-      var itemMap = item.toMap();
-      itemMap['transaction_id'] = transaction.id ?? id;
-      await db.insert('transaction_items', itemMap);
-    }
+      final String actualTrxId = transaction.id ?? generatedId.toString();
 
-    return id;
+      // 2. Hapus item lama jika ini merupakan update transaksi
+      await txn.delete(
+        'transaction_items',
+        where: 'transaction_id = ?',
+        whereArgs: [actualTrxId],
+      );
+
+      // 3. Simpan item transaksi & potong stok produk secara otomatis
+      for (var item in transaction.items) {
+        var itemMap = item.toMap();
+        itemMap['transaction_id'] = actualTrxId;
+        await txn.insert('transaction_items', itemMap);
+
+        // Potong stok produk di database
+        await txn.rawUpdate(
+          'UPDATE products SET stock = stock - ? WHERE id = ?',
+          [item.quantity, item.productId],
+        );
+      }
+    });
+
+    return generatedId;
   }
 
   Future<List<TransactionModel>> getTransactions() async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('transactions', orderBy: 'transaction_date DESC');
+    final List<Map<String, dynamic>> maps = await db.query(
+      'transactions',
+      orderBy: 'transaction_date DESC',
+    );
 
     List<TransactionModel> transactions = [];
 
@@ -53,7 +72,8 @@ class TransactionRepository {
         whereArgs: [map['id']],
       );
 
-      List<TransactionItemModel> items = itemMaps.map((i) => TransactionItemModel.fromMap(i)).toList();
+      List<TransactionItemModel> items =
+          itemMaps.map((i) => TransactionItemModel.fromMap(i)).toList();
 
       transactions.add(TransactionModel.fromMap(map, items: items));
     }
