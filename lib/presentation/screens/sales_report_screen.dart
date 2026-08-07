@@ -147,6 +147,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return _filteredTransactions.fold(0, (sum, item) => sum + item.totalAmount);
   }
 
+  // --- MENCETAK STRUK ULANG VIA PRINTER THERMAL ---
+  Future<void> _printReceiptThermal(TransactionModel trx) async {
+    bool success = await PrinterService.printReceipt(trx);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Berhasil mencetak struk!' : 'Gagal mencetak struk. Periksa koneksi printer.'),
+          backgroundColor: success ? const Color(0xFF00796B) : Colors.red,
+        ),
+      );
+    }
+  }
+
   // --- GENERATE PDF REPORT ---
   Future<void> _exportPdfReport() async {
     final pdf = pw.Document();
@@ -278,6 +291,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     final startDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.start);
     final endDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.end);
     final dateDisplay = (startDateStr == endDateStr) ? startDateStr : '$startDateStr - $endDateStr';
+    final totalOmzet = _calculateTotalIncome();
 
     return Scaffold(
       appBar: AppBar(
@@ -289,7 +303,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. BILAH INFORMASI TANGGAL
+                // 1. BILAH INFORMASI TANGGAL & RINGKASAN OMSET
                 Container(
                   margin: const EdgeInsets.all(12.0),
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -298,34 +312,46 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFF00796B).withOpacity(0.3)),
                   ),
-                  child: InkWell(
-                    onTap: _pickDateRange,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
+                  child: Column(
+                    children: [
+                      InkWell(
+                        onTap: _pickDateRange,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Icon(Icons.date_range, color: Color(0xFF00796B)),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            Row(
                               children: [
-                                const Text('Periode Tanggal:', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                Text(dateDisplay, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                                const Icon(Icons.date_range, color: Color(0xFF00796B)),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Periode Tanggal:', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                    Text(dateDisplay, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                                  ],
+                                ),
                               ],
                             ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00796B),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text('Ubah', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            )
                           ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00796B),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('Ubah', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                        )
-                      ],
-                    ),
+                      ),
+                      const Divider(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Total: ${_filteredTransactions.length} Transaksi', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                          Text('Omzet: ${_formatRupiah(totalOmzet)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF00796B))),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
 
@@ -352,7 +378,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   child: _filteredTransactions.isEmpty
                       ? const Center(child: Text('Tidak ada transaksi pada periode ini'))
                       : ListView.builder(
-                          padding: const EdgeInsets.only(bottom: 80), // Menjaga agar tidak tertutup FAB Cetak PDF
+                          padding: const EdgeInsets.only(bottom: 80),
                           itemCount: _filteredTransactions.length,
                           itemBuilder: (context, index) {
                             final trx = _filteredTransactions[index];
@@ -388,10 +414,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                           icon: const Icon(Icons.delete_outline, color: Colors.red),
                                           onPressed: () => _confirmDeleteTransaction(trx),
                                         ),
-                                        OutlinedButton.icon(
-                                          onPressed: () => _navigateToEditReceipt(trx),
-                                          icon: const Icon(Icons.edit, size: 16),
-                                          label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
+                                        Row(
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.print, color: Color(0xFF00796B)),
+                                              tooltip: 'Cetak Struk Thermal',
+                                              onPressed: () => _printReceiptThermal(trx),
+                                            ),
+                                            OutlinedButton.icon(
+                                              onPressed: () => _navigateToEditReceipt(trx),
+                                              icon: const Icon(Icons.edit, size: 16),
+                                              label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
