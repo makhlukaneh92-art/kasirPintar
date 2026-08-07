@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,7 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
   String _storeAddress = '';
   String _storePhone = '';
   String _storeFooter = 'Terima Kasih Atas Kunjungan Anda!';
+  String? _logoPath;
 
   @override
   void initState() {
@@ -70,6 +72,7 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
       _storeAddress = prefs.getString('store_address') ?? '';
       _storePhone = prefs.getString('store_phone') ?? '';
       _storeFooter = prefs.getString('store_footer') ?? 'Terima Kasih Atas Kunjungan Anda!';
+      _logoPath = prefs.getString('store_logo');
     });
   }
 
@@ -138,8 +141,16 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
       items: _items,
     );
 
-    await _transactionRepo.createTransaction(updatedTrx);
+    // Memperbarui transaksi ke database lokal
+    await _transactionRepo.updateTransaction(updatedTrx);
     if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Struk berhasil diperbarui!'),
+        backgroundColor: Color(0xFF00796B),
+      ),
+    );
     Navigator.pop(context, true);
   }
 
@@ -288,6 +299,10 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
               ),
               child: Column(
                 children: [
+                  if (_logoPath != null && _logoPath!.isNotEmpty && File(_logoPath!).existsSync()) ...[
+                    Image.file(File(_logoPath!), height: 60, fit: BoxFit.contain),
+                    const SizedBox(height: 8),
+                  ],
                   Text(_storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   if (_storeAddress.isNotEmpty) Text(_storeAddress, style: const TextStyle(fontSize: 11)),
                   if (_storePhone.isNotEmpty) Text('Telp: $_storePhone', style: const TextStyle(fontSize: 11)),
@@ -363,8 +378,16 @@ class _EditReceiptScreenState extends State<EditReceiptScreen> {
                         transactionDate: widget.transaction.transactionDate,
                         items: _items,
                       );
-                      // Menggunakan static method PrinterService
-                      await PrinterService.printReceipt(updatedTrx);
+                      
+                      bool success = await PrinterService.printReceipt(updatedTrx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? 'Berhasil mencetak struk!' : 'Gagal mencetak struk.'),
+                            backgroundColor: success ? const Color(0xFF00796B) : Colors.red,
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
