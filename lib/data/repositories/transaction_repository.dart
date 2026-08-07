@@ -17,56 +17,69 @@ class TransactionRepository {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Naikkan versi ke 2 untuk memicu update tabel
       onCreate: (db, version) async {
-        // 1. Tabel Produk
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            buy_price REAL DEFAULT 0,
-            sell_price REAL DEFAULT 0,
-            stock INTEGER DEFAULT 0
-          )
-        ''');
-
-        // 2. Tabel Utama Transaksi
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER,
-            payment_status TEXT NOT NULL,
-            subtotal REAL NOT NULL,
-            total_amount REAL NOT NULL,
-            transaction_date TEXT NOT NULL
-          )
-        ''');
-
-        // 3. Tabel Item Transaksi
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS transaction_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transaction_id TEXT NOT NULL,
-            product_id INTEGER NOT NULL,
-            product_name TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            buy_price REAL NOT NULL,
-            sell_price REAL NOT NULL,
-            subtotal REAL NOT NULL
-          )
-        ''');
-
-        // 4. Tabel Pengeluaran Operasional (Expenses)
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            amount REAL NOT NULL,
-            expense_date TEXT NOT NULL
-          )
-        ''');
+        await _createTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // Buat tabel expenses jika user melakukan upgrade dari v1
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS expenses (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              amount REAL NOT NULL,
+              expense_date TEXT NOT NULL
+            )
+          ''');
+        }
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        buy_price REAL DEFAULT 0,
+        sell_price REAL DEFAULT 0,
+        stock INTEGER DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        payment_status TEXT NOT NULL,
+        subtotal REAL NOT NULL,
+        total_amount REAL NOT NULL,
+        transaction_date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transaction_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id TEXT NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        buy_price REAL NOT NULL,
+        sell_price REAL NOT NULL,
+        subtotal REAL NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        expense_date TEXT NOT NULL
+      )
+    ''');
   }
 
   // --- 1. MEMBUAT TRANSAKSI BARU ---
@@ -104,7 +117,7 @@ class TransactionRepository {
     return generatedId;
   }
 
-  // --- 2. MEMPERBARUI (EDIT) TRANSAKSI SECARA AMAN ---
+  // --- 2. MEMPERBARUI (EDIT) TRANSAKSI ---
   Future<void> updateTransaction(TransactionModel transaction) async {
     final db = await database;
     final String trxId = transaction.id.toString();
@@ -154,31 +167,35 @@ class TransactionRepository {
 
   // --- 3. MENGAMBIL DAFTAR TRANSAKSI ---
   Future<List<TransactionModel>> getTransactions() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'transactions',
-      orderBy: 'transaction_date DESC',
-    );
-
-    List<TransactionModel> transactions = [];
-
-    for (var map in maps) {
-      final List<Map<String, dynamic>> itemMaps = await db.query(
-        'transaction_items',
-        where: 'transaction_id = ?',
-        whereArgs: [map['id'].toString()],
+    try {
+      final db = await database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'transactions',
+        orderBy: 'transaction_date DESC',
       );
 
-      List<TransactionItemModel> items =
-          itemMaps.map((i) => TransactionItemModel.fromMap(i)).toList();
+      List<TransactionModel> transactions = [];
 
-      transactions.add(TransactionModel.fromMap(map, items: items));
+      for (var map in maps) {
+        final List<Map<String, dynamic>> itemMaps = await db.query(
+          'transaction_items',
+          where: 'transaction_id = ?',
+          whereArgs: [map['id'].toString()],
+        );
+
+        List<TransactionItemModel> items =
+            itemMaps.map((i) => TransactionItemModel.fromMap(i)).toList();
+
+        transactions.add(TransactionModel.fromMap(map, items: items));
+      }
+
+      return transactions;
+    } catch (e) {
+      return [];
     }
-
-    return transactions;
   }
 
-  // --- 4. MENGHAPUS TRANSAKSI & MENGEMBALIKAN STOK ---
+  // --- 4. MENGHAPUS TRANSAKSI ---
   Future<void> deleteTransaction(dynamic id) async {
     final db = await database;
 
@@ -212,7 +229,7 @@ class TransactionRepository {
     });
   }
 
-  // --- 5. MANAJEMEN PENGELUARAN OPERASIONAL (EXPENSES) ---
+  // --- 5. MANAJEMEN PENGELUARAN (EXPENSES) ---
   Future<int> createExpense(String title, double amount) async {
     final db = await database;
     return await db.insert('expenses', {
@@ -223,8 +240,12 @@ class TransactionRepository {
   }
 
   Future<List<Map<String, dynamic>>> getExpenses() async {
-    final db = await database;
-    return await db.query('expenses', orderBy: 'expense_date DESC');
+    try {
+      final db = await database;
+      return await db.query('expenses', orderBy: 'expense_date DESC');
+    } catch (e) {
+      return [];
+    }
   }
 
   Future<void> deleteExpense(int id) async {
