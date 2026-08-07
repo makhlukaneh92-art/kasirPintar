@@ -56,14 +56,24 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     }
   }
 
+  void _removeLogo() {
+    setState(() {
+      _logoPath = null;
+    });
+  }
+
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('store_name', _nameController.text.trim());
     await prefs.setString('store_address', _addressController.text.trim());
     await prefs.setString('store_phone', _phoneController.text.trim());
     await prefs.setString('store_footer', _footerController.text.trim());
-    if (_logoPath != null) {
+    
+    // Menyimpan atau menghapus logo berdasarkan status _logoPath
+    if (_logoPath != null && _logoPath!.isNotEmpty) {
       await prefs.setString('store_logo', _logoPath!);
+    } else {
+      await prefs.remove('store_logo');
     }
 
     if (mounted) {
@@ -124,7 +134,14 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text('Ketuk foto untuk mengganti logo', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        if (_logoPath != null && File(_logoPath!).existsSync())
+                          TextButton.icon(
+                            onPressed: _removeLogo,
+                            icon: const Icon(Icons.delete, size: 16, color: Colors.red),
+                            label: const Text('Hapus Logo', style: TextStyle(color: Colors.red, fontSize: 12)),
+                          )
+                        else
+                          const Text('Ketuk foto untuk mengganti logo', style: TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                   ),
