@@ -3,22 +3,6 @@ import 'package:intl/intl.dart';
 import '../../data/models/transaction_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 
-enum DateFilter { today, yesterday, thisMonth, lastMonth, thisYear, all }
-
-class CashFlowItem {
-  final String title;
-  final double amount;
-  final bool isIncome;
-  final DateTime date;
-
-  CashFlowItem({
-    required this.title,
-    required this.amount,
-    required this.isIncome,
-    required this.date,
-  });
-}
-
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
 
@@ -28,144 +12,167 @@ class FinanceScreen extends StatefulWidget {
 
 class _FinanceScreenState extends State<FinanceScreen> {
   final TransactionRepository _transactionRepo = TransactionRepository();
-  List<TransactionModel> _allTransactions = [];
-  List<TransactionModel> _filteredTransactions = [];
-  final List<CashFlowItem> _extraCashFlow = [];
 
-  DateFilter _selectedFilter = DateFilter.today;
-  String _searchQuery = '';
   bool _isLoading = true;
+  List<TransactionModel> _transactions = [];
+  List<Map<String, dynamic>> _expenses = [];
+
+  // Form Controllers untuk Tambah Pengeluaran
+  final TextEditingController _expenseTitleController = TextEditingController();
+  final TextEditingController _expenseAmountController = TextEditingController();
+
+  DateTimeRange _selectedDateRange = DateTimeRange(
+    start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    end: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59),
+  );
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadFinanceData();
   }
 
-  Future<void> _loadData() async {
+  @override
+  void dispose() {
+    _expenseTitleController.dispose();
+    _expenseAmountController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFinanceData() async {
     setState(() => _isLoading = true);
-    final list = await _transactionRepo.getTransactions();
-    setState(() {
-      _allTransactions = list;
-      _isLoading = false;
-    });
-    _applyFilter();
-  }
+    final allTrx = await _transactionRepo.getTransactions();
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  void _applyFilter() {
-    final now = DateTime.now();
-    DateTime yesterday = now.subtract(const Duration(days: 1));
-
-    List<TransactionModel> result = _allTransactions.where((trx) {
-      DateTime date = DateTime.tryParse(trx.transactionDate) ?? now;
-
-      switch (_selectedFilter) {
-        case DateFilter.today:
-          return _isSameDay(date, now);
-        case DateFilter.yesterday:
-          return _isSameDay(date, yesterday);
-        case DateFilter.thisMonth:
-          return date.year == now.year && date.month == now.month;
-        case DateFilter.lastMonth:
-          int lastMonth = now.month == 1 ? 12 : now.month - 1;
-          int year = now.month == 1 ? now.year - 1 : now.year;
-          return date.year == year && date.month == lastMonth;
-        case DateFilter.thisYear:
-          return date.year == now.year;
-        case DateFilter.all:
-          return true;
-      }
+    // Filter transaksi berdasarkan range tanggal
+    final filteredTrx = allTrx.where((trx) {
+      DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
+      return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
+          date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
     }).toList();
 
-    if (_searchQuery.isNotEmpty) {
-      result = result.where((trx) {
-        final idMatch = trx.id.toLowerCase().contains(_searchQuery.toLowerCase());
-        final itemMatch = trx.items.any((item) => item.productName.toLowerCase().contains(_searchQuery.toLowerCase()));
-        return idMatch || itemMatch;
-      }).toList();
-    }
-
     setState(() {
-      _filteredTransactions = result;
+      _transactions = filteredTrx;
+      _isLoading = false;
     });
   }
 
-  double get _totalOmset {
-    return _filteredTransactions.fold(0, (sum, trx) => sum + trx.totalAmount);
+  Future<void> _pickDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: _selectedDateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF00796B),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDateRange = DateTimeRange(
+          start: DateTime(picked.start.year, picked.start.month, picked.start.day, 0, 0, 0),
+          end: DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
+        );
+      });
+      _loadFinanceData();
+    }
   }
 
-  double get _totalHpp {
-    double total = 0;
-    for (var trx in _filteredTransactions) {
+  // Perhitungan Keuangan
+  double _calculateTotalOmzet() {
+    return _transactions.fold(0, (sum, trx) => sum + trx.totalAmount);
+  }
+
+  double _calculateTotalHPP() {
+    double totalHpp = 0;
+    for (var trx in _transactions) {
       for (var item in trx.items) {
-        total += (item.buyPrice * item.quantity);
+        totalHpp += (item.buyPrice * item.quantity);
       }
     }
-    return total;
+    return totalHpp;
   }
 
-  double get _extraIncome {
-    return _extraCashFlow.where((e) => e.isIncome).fold(0, (sum, e) => sum + e.amount);
+  double _calculateLabaKotor() {
+    return _calculateTotalOmzet() - _calculateTotalHPP();
   }
 
-  double get _extraExpense {
-    return _extraCashFlow.where((e) => !e.isIncome).fold(0, (sum, e) => sum + e.amount);
+  double _calculateTotalExpenses() {
+    return _expenses.fold(0, (sum, exp) => sum + (exp['amount'] as double));
   }
 
-  double get _netProfit {
-    return (_totalOmset + _extraIncome) - (_totalHpp + _extraExpense);
+  double _calculateLabaBersih() {
+    return _calculateLabaKotor() - _calculateTotalExpenses();
   }
 
   String _formatRupiah(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  void _showAddCashFlowDialog(bool isIncome) {
-    final titleController = TextEditingController();
-    final amountController = TextEditingController();
+  void _showAddExpenseDialog() {
+    _expenseTitleController.clear();
+    _expenseAmountController.clear();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isIncome ? 'Tambah Pemasukan Lain' : 'Tambah Pengeluaran Operasional'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tambah Pengeluaran'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: 'Keterangan', border: OutlineInputBorder()),
+              controller: _expenseTitleController,
+              decoration: const InputDecoration(
+                labelText: 'Keterangan / Nama Pengeluaran',
+                border: OutlineInputBorder(),
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             TextField(
-              controller: amountController,
+              controller: _expenseAmountController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Jumlah (Rp)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Jumlah (Rp)',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('BATAL')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('BATAL'),
+          ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              foregroundColor: Colors.white,
+            ),
             onPressed: () {
-              final title = titleController.text.trim();
-              final amount = double.tryParse(amountController.text) ?? 0;
-              if (title.isNotEmpty && amount > 0) {
+              final String title = _expenseTitleController.text.trim();
+              final double? amount = double.tryParse(_expenseAmountController.text.trim());
+
+              if (title.isNotEmpty && amount != null && amount > 0) {
                 setState(() {
-                  _extraCashFlow.add(CashFlowItem(
-                    title: title,
-                    amount: amount,
-                    isIncome: isIncome,
-                    date: DateTime.now(),
-                  ));
+                  _expenses.add({
+                    'id': DateTime.now().millisecondsSinceEpoch,
+                    'title': title,
+                    'amount': amount,
+                    'date': DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now()),
+                  });
                 });
-                Navigator.pop(context);
+                Navigator.pop(ctx);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
             child: const Text('SIMPAN'),
           ),
         ],
@@ -175,6 +182,16 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final startDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.start);
+    final endDateStr = DateFormat('dd MMM yyyy').format(_selectedDateRange.end);
+    final dateDisplay = (startDateStr == endDateStr) ? startDateStr : '$startDateStr - $endDateStr';
+
+    final totalOmzet = _calculateTotalOmzet();
+    final totalHpp = _calculateTotalHPP();
+    final labaKotor = _calculateLabaKotor();
+    final totalPengeluaran = _calculateTotalExpenses();
+    final labaBersih = _calculateLabaBersih();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Keuangan & Laba Bersih'),
@@ -183,158 +200,178 @@ class _FinanceScreenState extends State<FinanceScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Row(
-                    children: [
-                      _buildFilterChip('Hari Ini', DateFilter.today),
-                      _buildFilterChip('Kemarin', DateFilter.yesterday),
-                      _buildFilterChip('Bulan Ini', DateFilter.thisMonth),
-                      _buildFilterChip('Bulan Kemarin', DateFilter.lastMonth),
-                      _buildFilterChip('Tahunan', DateFilter.thisYear),
-                      _buildFilterChip('Semua', DateFilter.all),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-                  child: TextField(
-                    onChanged: (val) {
-                      _searchQuery = val;
-                      _applyFilter();
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Cari ID Transaksi / Nama Produk...',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                      isDense: true,
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Filter Tanggal
+                  InkWell(
+                    onTap: _pickDateRange,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00796B).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF00796B).withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.date_range, color: Color(0xFF00796B)),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Periode Laporan:', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                  Text(dateDisplay, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const Icon(Icons.edit, size: 18, color: Color(0xFF00796B)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                Card(
-                  margin: const EdgeInsets.all(12),
-                  color: const Color(0xFFE0F2F1),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
+
+                  const SizedBox(height: 16),
+
+                  // RINGKASAN UTAMA (LABA BERSIH)
+                  Card(
+                    color: labaBersih >= 0 ? Colors.teal.shade700 : Colors.red.shade700,
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('ESTIMASI LABA BERSIH', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatRupiah(labaBersih),
+                            style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
+                          ),
+                          const Divider(color: Colors.white30, height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Total Omzet: ${_formatRupiah(totalOmzet)}', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              Text('Operasional: ${_formatRupiah(totalPengeluaran)}', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // RINCIAN LABA RUGI
+                  const Text('Rincian Perhitungan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 8),
+
+                  Card(
                     child: Column(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildStatColumn('Total Omset', _formatRupiah(_totalOmset), Colors.teal[800]!),
-                            _buildStatColumn('Laba Bersih', _formatRupiah(_netProfit), Colors.green[800]!),
-                          ],
+                        ListTile(
+                          dense: true,
+                          title: const Text(' Total Omzet / Penjualan'),
+                          trailing: Text(_formatRupiah(totalOmzet), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                         ),
-                        if (_extraIncome > 0 || _extraExpense > 0) const Divider(),
-                        if (_extraIncome > 0 || _extraExpense > 0)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              Text('Pemasukan Lain: ${_formatRupiah(_extraIncome)}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
-                              Text('Pengeluaran: ${_formatRupiah(_extraExpense)}', style: const TextStyle(fontSize: 11, color: Colors.red)),
-                            ],
-                          )
+                        const Divider(height: 1),
+                        ListTile(
+                          dense: true,
+                          title: const Text(' Total HPP / Modal Barang'),
+                          trailing: Text('- ${_formatRupiah(totalHpp)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          dense: true,
+                          tileColor: Colors.grey.shade100,
+                          title: const Text('Laba Kotor (Omzet - Modal)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          trailing: Text(_formatRupiah(labaKotor), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          dense: true,
+                          title: const Text(' Total Pengeluaran Operasional'),
+                          trailing: Text('- ${_formatRupiah(totalPengeluaran)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: Row(
+
+                  const SizedBox(height: 20),
+
+                  // PENGELUARAN OPERASIONAL
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAddCashFlowDialog(true),
-                          icon: const Icon(Icons.add_circle, size: 16),
-                          label: const Text('Pemasukan', style: TextStyle(fontSize: 12)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
+                      const Text('Pengeluaran Operasional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00796B),
+                          foregroundColor: Colors.white,
+                          isDense: true,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAddCashFlowDialog(false),
-                          icon: const Icon(Icons.remove_circle, size: 16),
-                          label: const Text('Pengeluaran', style: TextStyle(fontSize: 12)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], foregroundColor: Colors.white),
-                        ),
+                        onPressed: _showAddExpenseDialog,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Tambah', style: TextStyle(fontSize: 12)),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Riwayat Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                Expanded(
-                  child: _filteredTransactions.isEmpty
-                      ? const Center(child: Text('Tidak ada data transaksi'))
-                      : ListView.builder(
-                          itemCount: _filteredTransactions.length,
-                          itemBuilder: (context, index) {
-                            final trx = _filteredTransactions[index];
-                            final dateFormatted = DateFormat('dd MMM yyyy, HH:mm')
-                                .format(DateTime.tryParse(trx.transactionDate) ?? DateTime.now());
 
+                  const SizedBox(height: 8),
+
+                  _expenses.isEmpty
+                      ? Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Center(
+                              child: Text(
+                                'Belum ada pengeluaran operasional yang dicatat',
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _expenses.length,
+                          itemBuilder: (context, index) {
+                            final exp = _expenses[index];
                             return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              child: ExpansionTile(
-                                leading: const CircleAvatar(
-                                  backgroundColor: Color(0xFF00796B),
-                                  child: Icon(Icons.receipt, color: Colors.white),
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                dense: true,
+                                title: Text(exp['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(exp['date']),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(_formatRupiah(exp['amount']), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
+                                      onPressed: () {
+                                        setState(() {
+                                          _expenses.removeAt(index);
+                                        });
+                                      },
+                                    ),
+                                  ],
                                 ),
-                                title: Text(_formatRupiah(trx.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text('$dateFormatted\nStatus: ${trx.paymentStatus}'),
-                                children: trx.items.map((item) {
-                                  return ListTile(
-                                    dense: true,
-                                    title: Text(item.productName),
-                                    subtitle: Text('${item.quantity}x @ ${_formatRupiah(item.sellPrice)}'),
-                                    trailing: Text(_formatRupiah(item.subtotal)),
-                                  );
-                                }).toList(),
                               ),
                             );
                           },
                         ),
-                ),
-              ],
+                ],
+              ),
             ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, DateFilter filter) {
-    final isSelected = _selectedFilter == filter;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6.0),
-      child: FilterChip(
-        label: Text(label, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : Colors.black)),
-        selected: isSelected,
-        selectedColor: const Color(0xFF00796B),
-        onSelected: (val) {
-          setState(() {
-            _selectedFilter = filter;
-          });
-          _applyFilter();
-        },
-      ),
-    );
-  }
-
-  Widget _buildStatColumn(String title, String value, Color color) {
-    return Column(
-      children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-      ],
     );
   }
 }
