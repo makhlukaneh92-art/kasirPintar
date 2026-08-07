@@ -14,7 +14,49 @@ class TransactionRepository {
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'kasir_pintar.db');
-    return await openDatabase(path, version: 1);
+
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        // 1. Buat Tabel Produk (Aman jika belum dibuat di repo lain)
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            buy_price REAL DEFAULT 0,
+            sell_price REAL DEFAULT 0,
+            stock INTEGER DEFAULT 0
+          )
+        ''');
+
+        // 2. Buat Tabel Utama Transaksi
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER,
+            payment_status TEXT NOT NULL,
+            subtotal REAL NOT NULL,
+            total_amount REAL NOT NULL,
+            transaction_date TEXT NOT NULL
+          )
+        ''');
+
+        // 3. Buat Tabel Item Transaksi
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS transaction_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT NOT NULL,
+            product_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            buy_price REAL NOT NULL,
+            sell_price REAL NOT NULL,
+            subtotal REAL NOT NULL
+          )
+        ''');
+      },
+    );
   }
 
   // --- 1. MEMBUAT TRANSAKSI BARU ---
@@ -32,7 +74,7 @@ class TransactionRepository {
 
       final String actualTrxId = transaction.id?.toString() ?? generatedId.toString();
 
-      // Hapus item transaksi lama (jika ada)
+      // Hapus item transaksi lama jika ada
       await txn.delete(
         'transaction_items',
         where: 'transaction_id = ?',
@@ -62,7 +104,7 @@ class TransactionRepository {
     final String trxId = transaction.id.toString();
 
     await db.transaction((txn) async {
-      // A. Ambil item transaksi lama untuk mengembalikan stok barang ke semula
+      // Ambil item transaksi lama untuk mengembalikan stok barang ke semula
       final List<Map<String, dynamic>> oldItemsMap = await txn.query(
         'transaction_items',
         where: 'transaction_id = ?',
@@ -73,14 +115,14 @@ class TransactionRepository {
         final int oldProductId = oldMap['product_id'];
         final int oldQuantity = oldMap['quantity'];
 
-        // Kembalikan stok produk (ditambah kembali)
+        // Kembalikan stok produk
         await txn.rawUpdate(
           'UPDATE products SET stock = stock + ? WHERE id = ?',
           [oldQuantity, oldProductId],
         );
       }
 
-      // B. Update data utama transaksi
+      // Update data utama transaksi
       await txn.update(
         'transactions',
         transaction.toMap(),
@@ -88,14 +130,14 @@ class TransactionRepository {
         whereArgs: [trxId],
       );
 
-      // C. Hapus item transaksi lama
+      // Hapus item transaksi lama
       await txn.delete(
         'transaction_items',
         where: 'transaction_id = ?',
         whereArgs: [trxId],
       );
 
-      // D. Simpan item transaksi baru & potong stok produk sesuai kuantitas baru
+      // Simpan item transaksi baru & potong stok produk baru
       for (var item in transaction.items) {
         var itemMap = item.toMap();
         itemMap['transaction_id'] = trxId;
@@ -124,7 +166,7 @@ class TransactionRepository {
       final List<Map<String, dynamic>> itemMaps = await db.query(
         'transaction_items',
         where: 'transaction_id = ?',
-        whereArgs: [map['id']],
+        whereArgs: [map['id'].toString()],
       );
 
       List<TransactionItemModel> items =
@@ -141,34 +183,31 @@ class TransactionRepository {
     final db = await database;
 
     await db.transaction((txn) async {
-      // Ambil item transaksi untuk mengembalikan stok sebelum dihapus
       final List<Map<String, dynamic>> oldItemsMap = await txn.query(
         'transaction_items',
         where: 'transaction_id = ?',
-        whereArgs: [id],
+        whereArgs: [id.toString()],
       );
 
       for (var oldMap in oldItemsMap) {
         final int oldProductId = oldMap['product_id'];
         final int oldQuantity = oldMap['quantity'];
 
-        // Kembalikan stok produk
         await txn.rawUpdate(
           'UPDATE products SET stock = stock + ? WHERE id = ?',
           [oldQuantity, oldProductId],
         );
       }
 
-      // Hapus data dari tabel
       await txn.delete(
         'transaction_items',
         where: 'transaction_id = ?',
-        whereArgs: [id],
+        whereArgs: [id.toString()],
       );
       await txn.delete(
         'transactions',
         where: 'id = ?',
-        whereArgs: [id],
+        whereArgs: [id.toString()],
       );
     });
   }
