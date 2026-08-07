@@ -18,11 +18,21 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   String? _logoPath;
   final ImagePicker _picker = ImagePicker();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadStoreSettings();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _addressController.dispose();
+    _phoneController.dispose();
+    _footerController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStoreSettings() async {
@@ -33,6 +43,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _phoneController.text = prefs.getString('store_phone') ?? '081234567890';
       _footerController.text = prefs.getString('store_footer') ?? 'Terima Kasih Atas Kunjungan Anda!';
       _logoPath = prefs.getString('store_logo');
+      _isLoading = false;
     });
   }
 
@@ -57,7 +68,10 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Identitas Toko Berhasil Disimpan!')),
+        const SnackBar(
+          content: Text('Identitas Toko Berhasil Disimpan!'),
+          backgroundColor: Color(0xFF00796B),
+        ),
       );
       Navigator.pop(context);
     }
@@ -71,100 +85,102 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    onTap: _pickLogo,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF00796B)),
-                        image: _logoPath != null && File(_logoPath!).existsSync()
-                            ? DecorationImage(
-                                image: FileImage(File(_logoPath!)),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: _logoPath == null || !File(_logoPath!).existsSync()
-                          ? const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_a_photo, color: Color(0xFF00796B), size: 32),
-                                SizedBox(height: 4),
-                                Text('Pilih Logo', style: TextStyle(fontSize: 11)),
-                              ],
-                            )
-                          : null,
+                  Center(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: _pickLogo,
+                          child: Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF00796B)),
+                              image: _logoPath != null && File(_logoPath!).existsSync()
+                                  ? DecorationImage(
+                                      image: FileImage(File(_logoPath!)),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: _logoPath == null || !File(_logoPath!).existsSync()
+                                ? const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo, color: Color(0xFF00796B), size: 32),
+                                      SizedBox(height: 4),
+                                      Text('Pilih Logo', style: TextStyle(fontSize: 11)),
+                                    ],
+                                  )
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text('Ketuk foto untuk mengganti logo', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text('Ketuk foto untuk mengganti logo', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama Toko',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.store),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _addressController,
+                    decoration: const InputDecoration(
+                      labelText: 'Alamat Toko',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.location_on),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor WhatsApp / HP',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _footerController,
+                    decoration: const InputDecoration(
+                      labelText: 'Pesan Kaki Struk (Footer)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.chat_bubble_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _saveSettings,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00796B),
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('SIMPAN IDENTITAS TOKO', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nama Toko',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.store),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Alamat Toko',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_on),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Nomor WhatsApp / HP',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _footerController,
-              decoration: const InputDecoration(
-                labelText: 'Pesan Kaki Struk (Footer)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.chat_bubble_outline),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _saveSettings,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00796B),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('SIMPAN IDENTITAS TOKO', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
