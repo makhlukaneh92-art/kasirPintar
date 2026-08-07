@@ -148,7 +148,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  void _showAddExpenseDialog() {
+    void _showAddExpenseDialog() {
     _expenseTitleController.clear();
     _expenseAmountController.clear();
 
@@ -173,6 +173,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
               decoration: const InputDecoration(
                 labelText: 'Jumlah (Rp)',
                 border: OutlineInputBorder(),
+                hintText: 'Contoh: 50000',
               ),
             ),
           ],
@@ -189,13 +190,41 @@ class _FinanceScreenState extends State<FinanceScreen> {
             ),
             onPressed: () async {
               final String title = _expenseTitleController.text.trim();
-              final double? amount = double.tryParse(_expenseAmountController.text.trim());
+              
+              // Membersihkan format angka (menghapus titik, koma, Rp, spasi)
+              String cleanAmountStr = _expenseAmountController.text
+                  .replaceAll('.', '')
+                  .replaceAll(',', '')
+                  .replaceAll('Rp', '')
+                  .trim();
+
+              final double? amount = double.tryParse(cleanAmountStr);
 
               if (title.isNotEmpty && amount != null && amount > 0) {
+                // 1. Simpan ke Database
                 await _transactionRepo.createExpense(title, amount);
+                
                 if (!mounted) return;
                 Navigator.pop(ctx);
+
+                // 2. Refresh Tampilan
                 _loadFinanceData();
+
+                // 3. Notifikasi Berhasil
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Pengeluaran berhasil disimpan!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } else {
+                // Notifikasi jika input tidak valid
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Mohon isi nama dan nominal pengeluaran dengan benar.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             child: const Text('SIMPAN'),
@@ -203,7 +232,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
         ],
       ),
     );
-  }
+    }
 
   @override
   Widget build(BuildContext context) {
