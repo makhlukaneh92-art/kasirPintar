@@ -17,7 +17,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
   List<TransactionModel> _transactions = [];
   List<Map<String, dynamic>> _expenses = [];
 
-  // Form Controllers untuk Tambah Pengeluaran
   final TextEditingController _expenseTitleController = TextEditingController();
   final TextEditingController _expenseAmountController = TextEditingController();
 
@@ -41,7 +40,9 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   Future<void> _loadFinanceData() async {
     setState(() => _isLoading = true);
+    
     final allTrx = await _transactionRepo.getTransactions();
+    final allExpenses = await _transactionRepo.getExpenses();
 
     // Filter transaksi berdasarkan range tanggal
     final filteredTrx = allTrx.where((trx) {
@@ -50,8 +51,16 @@ class _FinanceScreenState extends State<FinanceScreen> {
           date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
     }).toList();
 
+    // Filter pengeluaran berdasarkan range tanggal
+    final filteredExpenses = allExpenses.where((exp) {
+      DateTime date = DateTime.tryParse(exp['expense_date'] ?? '') ?? DateTime.now();
+      return date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
+          date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
+    }).toList();
+
     setState(() {
       _transactions = filteredTrx;
+      _expenses = filteredExpenses;
       _isLoading = false;
     });
   }
@@ -87,14 +96,26 @@ class _FinanceScreenState extends State<FinanceScreen> {
     }
   }
 
-  // Perhitungan Keuangan
+  // --- PERHITUNGAN KEUANGAN ---
+  
+  // 1. Omzet Tunai (Hanya transaksi LUNAS yang masuk ke kas)
   double _calculateTotalOmzet() {
-    return _transactions.fold(0, (sum, trx) => sum + trx.totalAmount);
+    return _transactions
+        .where((trx) => trx.paymentStatus == 'LUNAS')
+        .fold(0, (sum, trx) => sum + trx.totalAmount);
   }
 
+  // 2. Total Piutang (KREDIT / BELUM LUNAS - Uang tertahan di pelanggan)
+  double _calculateTotalPiutang() {
+    return _transactions
+        .where((trx) => trx.paymentStatus == 'KREDIT' || trx.paymentStatus == 'BELUM LUNAS')
+        .fold(0, (sum, trx) => sum + trx.totalAmount);
+  }
+
+  // 3. Total HPP (Modal barang yang terjual dari transaksi LUNAS)
   double _calculateTotalHPP() {
     double totalHpp = 0;
-    for (var trx in _transactions) {
+    for (var trx in _transactions.where((t) => t.paymentStatus == 'LUNAS')) {
       for (var item in trx.items) {
         totalHpp += (item.buyPrice * item.quantity);
       }
@@ -107,7 +128,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
   }
 
   double _calculateTotalExpenses() {
-    return _expenses.fold(0, (sum, exp) => sum + (exp['amount'] as double));
+    return _expenses.fold(0, (sum, exp) => sum + (exp['amount'] as num).toDouble());
   }
 
   double _calculateLabaBersih() {
@@ -157,20 +178,15 @@ class _FinanceScreenState extends State<FinanceScreen> {
               backgroundColor: const Color(0xFF00796B),
               foregroundColor: Colors.white,
             ),
-            onPressed: () {
+            onPressed: () async {
               final String title = _expenseTitleController.text.trim();
               final double? amount = double.tryParse(_expenseAmountController.text.trim());
 
               if (title.isNotEmpty && amount != null && amount > 0) {
-                setState(() {
-                  _expenses.add({
-                    'id': DateTime.now().millisecondsSinceEpoch,
-                    'title': title,
-                    'amount': amount,
-                    'date': DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now()),
-                  });
-                });
+                await _transactionRepo.createExpense(title, amount);
+                if (!mounted) return;
                 Navigator.pop(ctx);
+                _loadFinanceData();
               }
             },
             child: const Text('SIMPAN'),
@@ -187,6 +203,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     final dateDisplay = (startDateStr == endDateStr) ? startDateStr : '$startDateStr - $endDateStr';
 
     final totalOmzet = _calculateTotalOmzet();
+    final totalPiutang = _calculateTotalPiutang();
     final totalHpp = _calculateTotalHPP();
     final labaKotor = _calculateLabaKotor();
     final totalPengeluaran = _calculateTotalExpenses();
@@ -249,7 +266,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('ESTIMASI LABA BERSIH', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const Text('ESTIMASI LABA BERSIH (TUNAI)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
                           Text(
                             _formatRupiah(labaBersih),
@@ -259,7 +276,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Total Omzet: ${_formatRupiah(totalOmzet)}', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              Text('Omzet Kas: ${_formatRupiah(totalOmzet)}', style: const TextStyle(color: Colors.white, fontSize: 11)),
                               Text('Operasional: ${_formatRupiah(totalPengeluaran)}', style: const TextStyle(color: Colors.white, fontSize: 11)),
                             ],
                           ),
@@ -267,6 +284,35 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       ),
                     ),
                   ),
+
+                  // KARTU PIUTANG / UNPAID TRANSACTIONS (JIKA ADA)
+                  if (totalPiutang > 0) ...[
+                    const SizedBox(height: 8),
+                    Card(
+                      color: Colors.orange.shade50,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: Colors.orange.shade300),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.pending_actions, color: Colors.orange),
+                        title: const Text(
+                          'Piutang / Belum Lunas',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange),
+                        ),
+                        subtitle: const Text(
+                          'Uang tertahan di pelanggan (Belum Masuk Kas)',
+                          style: TextStyle(fontSize: 10),
+                        ),
+                        trailing: Text(
+                          _formatRupiah(totalPiutang),
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
 
                   const SizedBox(height: 16),
 
@@ -279,7 +325,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       children: [
                         ListTile(
                           dense: true,
-                          title: const Text(' Total Omzet / Penjualan'),
+                          title: const Text(' Total Omzet / Penjualan (Lunas)'),
                           trailing: Text(_formatRupiah(totalOmzet), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                         ),
                         const Divider(height: 1),
@@ -345,22 +391,27 @@ class _FinanceScreenState extends State<FinanceScreen> {
                           itemCount: _expenses.length,
                           itemBuilder: (context, index) {
                             final exp = _expenses[index];
+                            final DateTime expDate = DateTime.tryParse(exp['expense_date'] ?? '') ?? DateTime.now();
+                            final String formattedDate = DateFormat('dd MMM yyyy, HH:mm').format(expDate);
+
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               child: ListTile(
                                 dense: true,
                                 title: Text(exp['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text(exp['date']),
+                                subtitle: Text(formattedDate),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(_formatRupiah(exp['amount']), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      _formatRupiah((exp['amount'] as num).toDouble()),
+                                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                                    ),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
-                                      onPressed: () {
-                                        setState(() {
-                                          _expenses.removeAt(index);
-                                        });
+                                      onPressed: () async {
+                                        await _transactionRepo.deleteExpense(exp['id']);
+                                        _loadFinanceData();
                                       },
                                     ),
                                   ],
