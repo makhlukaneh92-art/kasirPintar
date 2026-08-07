@@ -11,6 +11,7 @@ import '../../data/models/customer_model.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../services/printer_service.dart';
+import 'edit_receipt_screen.dart';
 
 class SalesReportScreen extends StatefulWidget {
   const SalesReportScreen({super.key});
@@ -77,7 +78,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     List<TransactionModel> result = _allTransactions.where((trx) {
       DateTime date = DateTime.tryParse(trx.transactionDate) ?? DateTime.now();
       
-      // Mengecek apakah tanggal transaksi berada di dalam rentang
       bool inRange = date.isAfter(_selectedDateRange.start.subtract(const Duration(seconds: 1))) &&
                      date.isBefore(_selectedDateRange.end.add(const Duration(seconds: 1)));
       return inRange;
@@ -163,7 +163,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
-            // Header PDF
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -188,7 +187,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             pw.Divider(),
             pw.SizedBox(height: 8),
 
-            // Ringkasan
             pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
@@ -205,7 +203,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             ),
             pw.SizedBox(height: 16),
 
-            // Tabel Transaksi
             pw.TableHelper.fromTextArray(
               headers: ['No', 'ID', 'Tanggal & Waktu', 'Pelanggan', 'Status', 'Total'],
               data: List.generate(_filteredTransactions.length, (index) {
@@ -237,168 +234,21 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     );
   }
 
-  // --- DIALOG EDIT STRUK & PREVIEW STRUK (SEPERTI SEBELUMNYA) ---
-  void _showEditReceiptDialog(TransactionModel trx) {
-    String currentStatus = trx.paymentStatus;
-    int? selectedCustId = trx.customerId;
-
-    List<TransactionItemModel> tempItems = trx.items.map((e) => TransactionItemModel(
-      id: e.id,
-      transactionId: e.transactionId,
-      productId: e.productId,
-      productName: e.productName,
-      quantity: e.quantity,
-      buyPrice: e.buyPrice,
-      sellPrice: e.sellPrice,
-      subtotal: e.subtotal,
-    )).toList();
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          double calcSubtotal() => tempItems.fold(0, (sum, item) => sum + item.subtotal);
-          double discount = (trx.subtotal - trx.totalAmount) > 0 ? (trx.subtotal - trx.totalAmount) : 0;
-          double calcTotal() {
-            double sub = calcSubtotal();
-            double tot = sub - discount;
-            return tot < 0 ? 0 : tot;
-          }
-
-          return AlertDialog(
-            title: Text('Edit Struk #${trx.id}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Status Pembayaran:', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  DropdownButtonFormField<String>(
-                    value: currentStatus,
-                    isExpanded: true,
-                    decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                    items: const [
-                      DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-                      DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
-                      DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setDialogState(() => currentStatus = val);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('Pelanggan:', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  DropdownButtonFormField<int?>(
-                    value: _customers.any((c) => c.id == selectedCustId) ? selectedCustId : null,
-                    isExpanded: true,
-                    decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                    hint: const Text('Umum'),
-                    items: [
-                      const DropdownMenuItem<int?>(value: null, child: Text('Umum')),
-                      ..._customers.map((c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.name))),
-                    ],
-                    onChanged: (val) => setDialogState(() => selectedCustId = val),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Daftar Produk:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const Divider(),
-                  ...tempItems.asMap().entries.map((entry) {
-                    int idx = entry.key;
-                    var item = entry.value;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                Text('@ ${_formatRupiah(item.sellPrice)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 22),
-                            onPressed: () {
-                              setDialogState(() {
-                                if (item.quantity > 1) {
-                                  int newQty = item.quantity - 1;
-                                  tempItems[idx] = TransactionItemModel(
-                                    id: item.id,
-                                    transactionId: item.transactionId,
-                                    productId: item.productId,
-                                    productName: item.productName,
-                                    quantity: newQty,
-                                    buyPrice: item.buyPrice,
-                                    sellPrice: item.sellPrice,
-                                    subtotal: newQty * item.sellPrice,
-                                  );
-                                } else {
-                                  tempItems.removeAt(idx);
-                                }
-                              });
-                            },
-                          ),
-                          Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 22),
-                            onPressed: () {
-                              setDialogState(() {
-                                int newQty = item.quantity + 1;
-                                tempItems[idx] = TransactionItemModel(
-                                  id: item.id,
-                                  transactionId: item.transactionId,
-                                  productId: item.productId,
-                                  productName: item.productName,
-                                  quantity: newQty,
-                                  buyPrice: item.buyPrice,
-                                  sellPrice: item.sellPrice,
-                                  subtotal: newQty * item.sellPrice,
-                                );
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('BATAL')),
-              ElevatedButton(
-                onPressed: tempItems.isEmpty
-                    ? null
-                    : () async {
-                        double sub = calcSubtotal();
-                        double tot = calcTotal();
-                        final updatedTrx = TransactionModel(
-                          id: trx.id,
-                          customerId: selectedCustId,
-                          paymentStatus: currentStatus,
-                          subtotal: sub,
-                          totalAmount: tot,
-                          transactionDate: trx.transactionDate,
-                          items: tempItems,
-                        );
-
-                        await _transactionRepo.createTransaction(updatedTrx);
-                        if (!mounted) return;
-                        Navigator.pop(context);
-                        await _loadData();
-                      },
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00796B), foregroundColor: Colors.white),
-                child: const Text('SIMPAN'),
-              ),
-            ],
-          );
-        },
+  // --- BUKA HALAMAN EDIT STRUK SECARA UTUH ---
+  void _navigateToEditReceipt(TransactionModel trx) async {
+    final bool? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditReceiptScreen(
+          transaction: trx,
+          customers: _customers,
+        ),
       ),
     );
+
+    if (result == true) {
+      await _loadData();
+    }
   }
 
   void _confirmDeleteTransaction(TransactionModel trx) {
@@ -439,7 +289,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. SINGLE DATE RANGE BAR (Bilah Informasi Tanggal)
+                // 1. BILAH INFORMASI TANGGAL
                 Container(
                   margin: const EdgeInsets.all(12.0),
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -479,7 +329,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   ),
                 ),
 
-                // 2. BUSCADOR (Pencarian Text)
+                // 2. PENCARIAN
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   child: TextField(
@@ -502,6 +352,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   child: _filteredTransactions.isEmpty
                       ? const Center(child: Text('Tidak ada transaksi pada periode ini'))
                       : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 80), // Menjaga agar tidak tertutup FAB Cetak PDF
                           itemCount: _filteredTransactions.length,
                           itemBuilder: (context, index) {
                             final trx = _filteredTransactions[index];
@@ -538,7 +389,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                           onPressed: () => _confirmDeleteTransaction(trx),
                                         ),
                                         OutlinedButton.icon(
-                                          onPressed: () => _showEditReceiptDialog(trx),
+                                          onPressed: () => _navigateToEditReceipt(trx),
                                           icon: const Icon(Icons.edit, size: 16),
                                           label: const Text('Edit Struk', style: TextStyle(fontSize: 12)),
                                         ),
