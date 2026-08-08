@@ -84,7 +84,6 @@ class TransactionRepository {
     ''');
   }
 
-  // --- SAFETY CHECK (Pencegah Bug "No Such Table") ---
   Future<void> _ensureTablesExist(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS expenses (
@@ -105,11 +104,39 @@ class TransactionRepository {
     ''');
   }
 
-  // --- TRANSAKSI PENJUALAN ---
+  // --- TRANSAKSI PENJUALAN (LENGKAP) ---
+  Future<int> createTransaction(TransactionModel transaction) async {
+    final db = await database;
+    return await db.insert(
+      'transactions',
+      transaction.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<List<TransactionModel>> getTransactions() async {
     final db = await database;
     final maps = await db.query('transactions', orderBy: 'transactionDate DESC');
     return maps.map((map) => TransactionModel.fromMap(map)).toList();
+  }
+
+  Future<int> updateTransaction(TransactionModel transaction) async {
+    final db = await database;
+    return await db.update(
+      'transactions',
+      transaction.toMap(),
+      where: 'id = ?',
+      whereArgs: [transaction.id],
+    );
+  }
+
+  Future<int> deleteTransaction(String id) async {
+    final db = await database;
+    return await db.delete(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- PENGELUARAN OPERASIONAL ---
