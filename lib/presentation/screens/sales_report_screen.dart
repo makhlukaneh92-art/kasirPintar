@@ -1,418 +1,301 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 import '../../data/models/transaction_model.dart';
-import '../../data/models/customer_model.dart';
 import '../../data/repositories/transaction_repository.dart';
-import '../../services/printer_service.dart';
+import 'edit_receipt_screen.dart';
 
-class EditReceiptScreen extends StatefulWidget {
-  final TransactionModel transaction;
-  final List<CustomerModel> customers;
-
-  const EditReceiptScreen({
-    super.key,
-    required this.transaction,
-    required this.customers,
-  });
+class SalesReportScreen extends StatefulWidget {
+  const SalesReportScreen({super.key});
 
   @override
-  State<EditReceiptScreen> createState() => _EditReceiptScreenState();
+  State<SalesReportScreen> createState() => _SalesReportScreenState();
 }
 
-class _EditReceiptScreenState extends State<EditReceiptScreen> {
+class _SalesReportScreenState extends State<SalesReportScreen> {
   final TransactionRepository _transactionRepo = TransactionRepository();
 
-  late String _currentStatus;
-  late int? _selectedCustId;
-  late List<TransactionItemModel> _items;
-  late List<TextEditingController> _controllers;
+  List<TransactionModel> _allTransactions = [];
+  List<TransactionModel> _filteredTransactions = [];
+  bool _isLoading = true;
 
-  // Profil toko untuk preview struk
-  String _storeName = 'Kasir Pintar';
-  String _storeAddress = '';
-  String _storePhone = '';
-  String _storeFooter = 'Terima Kasih Atas Kunjungan Anda!';
-  String? _logoPath;
+  double _totalOmset = 0;
+  double _totalProfit = 0;
+  DateTimeRange? _selectedDateRange;
 
   @override
   void initState() {
     super.initState();
-    _currentStatus = widget.transaction.paymentStatus;
-    _selectedCustId = widget.transaction.customerId;
-
-    _items = widget.transaction.items.map((e) => TransactionItemModel(
-      id: e.id,
-      transactionId: e.transactionId,
-      productId: e.productId,
-      productName: e.productName,
-      quantity: e.quantity,
-      buyPrice: e.buyPrice,
-      sellPrice: e.sellPrice,
-      subtotal: e.subtotal,
-    )).toList();
-
-    _controllers = _items.map((e) => TextEditingController(text: e.quantity.toString())).toList();
-    _loadStoreInfo();
+    _loadSalesData();
   }
 
-  @override
-  void dispose() {
-    for (var controller in _controllers) {
-      controller.dispose();
+  Future<void> _loadSalesData() async {
+    setState(() => _isLoading = true);
+    try {
+      final transactions = await _transactionRepo.getAllTransactions();
+      _allTransactions = transactions;
+      _applyFilter();
+    } catch (e) {
+      setState(() => _isLoading = false);
     }
-    super.dispose();
   }
 
-  Future<void> _loadStoreInfo() async {
-    final prefs = await SharedPreferences.getInstance();
+  void _applyFilter() {
+    List<TransactionModel> temp = _allTransactions;
+
+    if (_selectedDateRange != null) {
+      final start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+      final end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+
+      temp = _allTransactions.where((tx) {
+        final txDate = DateTime.tryParse(tx.transactionDate);
+        if (txDate == null) return false;
+        return txDate.isAfter(start.subtract(const Duration(seconds: 1))) &&
+            txDate.isBefore(end.add(const Duration(seconds: 1)));
+      }).toList();
+    }
+
+    double omset = 0;
+    double profit = 0;
+
+    for (var tx in temp) {
+      omset += tx.totalAmount;
+      if (tx.items != null) {
+        for (var item in tx.items!) {
+          double profitPerItem = (item.sellPrice - item.buyPrice) * item.quantity;
+          profit += profitPerItem;
+        }
+      }
+    }
+
     setState(() {
-      _storeName = prefs.getString('store_name') ?? 'Kasir Pintar';
-      _storeAddress = prefs.getString('store_address') ?? '';
-      _storePhone = prefs.getString('store_phone') ?? '';
-      _storeFooter = prefs.getString('store_footer') ?? 'Terima Kasih Atas Kunjungan Anda!';
-      _logoPath = prefs.getString('store_logo');
+      _filteredTransactions = temp;
+      _totalOmset = omset;
+      _totalProfit = profit;
+      _isLoading = false;
     });
   }
 
-  double _calcSubtotal() {
-    return _items.fold(0, (sum, item) => sum + item.subtotal);
+  Future<void> _pickDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _selectedDateRange ??
+          DateTimeRange(
+            start: DateTime.now().subtract(const Duration(days: 30)),
+            end: DateTime.now(),
+          ),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(primary: Color(0xFF00796B)),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() => _selectedDateRange = picked);
+      _applyFilter();
+    }
   }
 
-  double _calcDiscount() {
-    double originalDiscount = widget.transaction.subtotal - widget.transaction.totalAmount;
-    return originalDiscount > 0 ? originalDiscount : 0;
-  }
-
-  double _calcTotal() {
-    double sub = _calcSubtotal();
-    double tot = sub - _calcDiscount();
-    return tot < 0 ? 0 : tot;
+  void _resetFilter() {
+    setState(() => _selectedDateRange = null);
+    _applyFilter();
   }
 
   String _formatRupiah(double amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  String _getCustomerName() {
-    if (_selectedCustId == null) return 'Umum';
-    try {
-      final cust = widget.customers.firstWhere((c) => c.id == _selectedCustId);
-      return cust.name;
-    } catch (_) {
-      return 'Umum';
-    }
-  }
+  Future<void> _generatePdfReport() async {
+    final pdf = pw.Document();
+    final periodText = _selectedDateRange == null
+        ? 'Semua Periode'
+        : '${DateFormat('dd/MM/yyyy').format(_selectedDateRange!.start)} - ${DateFormat('dd/MM/yyyy').format(_selectedDateRange!.end)}';
 
-  void _updateQuantity(int index, int newQty) {
-    if (newQty < 1) return;
-    setState(() {
-      var item = _items[index];
-      _items[index] = TransactionItemModel(
-        id: item.id,
-        transactionId: item.transactionId,
-        productId: item.productId,
-        productName: item.productName,
-        quantity: newQty,
-        buyPrice: item.buyPrice,
-        sellPrice: item.sellPrice,
-        subtotal: newQty * item.sellPrice,
-      );
-      _controllers[index].text = newQty.toString();
-    });
-  }
-
-  Future<void> _saveTransaction() async {
-    if (_items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Daftar produk tidak boleh kosong')),
-      );
-      return;
-    }
-
-    final updatedTrx = TransactionModel(
-      id: widget.transaction.id,
-      customerId: _selectedCustId,
-      paymentStatus: _currentStatus,
-      subtotal: _calcSubtotal(),
-      totalAmount: _calcTotal(),
-      transactionDate: widget.transaction.transactionDate,
-      items: _items,
-    );
-
-    // Memperbarui transaksi ke database lokal
-    await _transactionRepo.updateTransaction(updatedTrx);
-    if (!mounted) return;
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Struk berhasil diperbarui!'),
-        backgroundColor: Color(0xFF00796B),
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) => [
+          pw.Header(
+            level: 0,
+            child: pw.Row(
+              main: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('LAPORAN PENJUALAN', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Periode: $periodText', style: const pw.TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Row(
+            main: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Total Transaksi: ${_filteredTransactions.length}'),
+              pw.Text('Total Omset: ${_formatRupiah(_totalOmset)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+          pw.Divider(),
+          pw.SizedBox(height: 10),
+          pw.Table.fromTextArray(
+            headers: ['Tanggal', 'No Struk', 'Status', 'Total'],
+            data: _filteredTransactions.map((tx) {
+              final dateStr = DateTime.tryParse(tx.transactionDate) != null
+                  ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(tx.transactionDate))
+                  : tx.transactionDate;
+              return [
+                dateStr,
+                tx.receiptNumber,
+                tx.paymentStatus,
+                _formatRupiah(tx.totalAmount),
+              ];
+            }).toList(),
+          ),
+        ],
       ),
     );
-    Navigator.pop(context, true);
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateFormatted = DateFormat('dd/MM/yyyy HH:mm')
-        .format(DateTime.tryParse(widget.transaction.transactionDate) ?? DateTime.now());
+    final periodText = _selectedDateRange == null
+        ? 'Semua Periode'
+        : '${DateFormat('dd/MM/yy').format(_selectedDateRange!.start)} - ${DateFormat('dd/MM/yy').format(_selectedDateRange!.end)}';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Edit Struk #${widget.transaction.id}'),
+        title: const Text('Laporan Penjualan'),
         backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Export PDF',
+            onPressed: _generatePdfReport,
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Pengaturan Transaksi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Filter Tanggal Bar
+                Container(
+                  color: Colors.grey.shade100,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 18, color: Color(0xFF00796B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          periodText,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                      if (_selectedDateRange != null)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.red, size: 20),
+                          onPressed: _resetFilter,
+                        ),
+                      ElevatedButton(
+                        onPressed: _pickDateRange,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00796B),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Filter'),
+                      ),
+                    ],
+                  ),
+                ),
 
-            // Status Pembayaran Dropdown
-            DropdownButtonFormField<String>(
-              value: _currentStatus,
-              decoration: const InputDecoration(
-                labelText: 'Status Pembayaran',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              items: const [
-                DropdownMenuItem(value: 'LUNAS', child: Text('LUNAS', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-                DropdownMenuItem(value: 'KREDIT', child: Text('KREDIT', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
-                DropdownMenuItem(value: 'BELUM LUNAS', child: Text('BELUM LUNAS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
-              ],
-              onChanged: (val) {
-                if (val != null) setState(() => _currentStatus = val);
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // Pelanggan Dropdown
-            DropdownButtonFormField<int?>(
-              value: widget.customers.any((c) => c.id == _selectedCustId) ? _selectedCustId : null,
-              decoration: const InputDecoration(
-                labelText: 'Pelanggan',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              hint: const Text('Umum'),
-              items: [
-                const DropdownMenuItem<int?>(value: null, child: Text('Umum')),
-                ...widget.customers.map((c) => DropdownMenuItem<int?>(value: c.id, child: Text(c.name))),
-              ],
-              onChanged: (val) => setState(() => _selectedCustId = val),
-            ),
-            const SizedBox(height: 20),
-
-            const Text('Edit Produk', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-
-            // List Item dengan input manual Qty
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _items.length,
-              itemBuilder: (context, index) {
-                var item = _items[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item.productName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              Text(_formatRupiah(item.sellPrice), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
+                // Card Summary
+                Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Card(
+                          color: Colors.teal.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              children: [
+                                const Text('Total Omset', style: TextStyle(fontSize: 11, color: Colors.black54)),
+                                const SizedBox(height: 4),
+                                Text(_formatRupiah(_totalOmset), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00796B))),
+                              ],
+                            ),
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                          onPressed: () {
-                            if (item.quantity > 1) {
-                              _updateQuantity(index, item.quantity - 1);
-                            } else {
-                              setState(() {
-                                _items.removeAt(index);
-                                _controllers.removeAt(index);
-                              });
-                            }
+                      ),
+                      Expanded(
+                        child: Card(
+                          color: Colors.blue.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              children: [
+                                const Text('Estimasi Keuntungan', style: TextStyle(fontSize: 11, color: Colors.black54)),
+                                const SizedBox(height: 4),
+                                Text(_formatRupiah(_totalProfit), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // List Transaksi
+                Expanded(
+                  child: _filteredTransactions.isEmpty
+                      ? const Center(child: Text('Tidak ada data transaksi'))
+                      : ListView.builder(
+                          itemCount: _filteredTransactions.length,
+                          itemBuilder: (context, index) {
+                            final tx = _filteredTransactions[index];
+                            final dateFormatted = DateTime.tryParse(tx.transactionDate) != null
+                                ? DateFormat('dd MMM yyyy, HH:mm').format(DateTime.parse(tx.transactionDate))
+                                : tx.transactionDate;
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              child: ListTile(
+                                title: Text(tx.receiptNumber, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text('$dateFormatted • ${tx.paymentStatus}'),
+                                trailing: Text(
+                                  _formatRupiah(tx.totalAmount),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => EditReceiptScreen(transaction: tx),
+                                    ),
+                                  ).then((_) => _loadSalesData());
+                                },
+                              ),
+                            );
                           },
                         ),
-                        SizedBox(
-                          width: 55,
-                          child: TextField(
-                            controller: _controllers[index],
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                              border: OutlineInputBorder(),
-                            ),
-                            onChanged: (val) {
-                              int? newQty = int.tryParse(val);
-                              if (newQty != null && newQty > 0) {
-                                _updateQuantity(index, newQty);
-                              }
-                            },
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline, color: Colors.green),
-                          onPressed: () => _updateQuantity(index, item.quantity + 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 24),
-            const Divider(thickness: 2),
-            const SizedBox(height: 12),
-
-            // --- LIVE PREVIEW STRUK THERMAL ---
-            const Center(
-              child: Text(
-                '--- PREVIEW STRUK THERMAL ---',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Column(
-                children: [
-                  if (_logoPath != null && _logoPath!.isNotEmpty && File(_logoPath!).existsSync()) ...[
-                    Image.file(File(_logoPath!), height: 60, fit: BoxFit.contain),
-                    const SizedBox(height: 8),
-                  ],
-                  Text(_storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  if (_storeAddress.isNotEmpty) Text(_storeAddress, style: const TextStyle(fontSize: 11)),
-                  if (_storePhone.isNotEmpty) Text('Telp: $_storePhone', style: const TextStyle(fontSize: 11)),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Tgl: $dateFormatted', style: const TextStyle(fontSize: 11)),
-                      Text('Pelanggan: ${_getCustomerName()}', style: const TextStyle(fontSize: 11)),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Sts: $_currentStatus', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      Text('Trx: #${widget.transaction.id}', style: const TextStyle(fontSize: 11)),
-                    ],
-                  ),
-                  const Divider(),
-
-                  ..._items.map((item) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text('${item.productName} x${item.quantity}', style: const TextStyle(fontSize: 12))),
-                        Text(_formatRupiah(item.subtotal), style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  )),
-
-                  const Divider(),
-                  if (_calcDiscount() > 0)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Diskon', style: TextStyle(fontSize: 12, color: Colors.red)),
-                        Text('- ${_formatRupiah(_calcDiscount())}', style: const TextStyle(fontSize: 12, color: Colors.red)),
-                      ],
-                    ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      Text(_formatRupiah(_calcTotal()), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(_storeFooter, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // TOMBOL AKSI
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.print),
-                    label: const Text('Cetak Struk'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: () async {
-                      final updatedTrx = TransactionModel(
-                        id: widget.transaction.id,
-                        customerId: _selectedCustId,
-                        paymentStatus: _currentStatus,
-                        subtotal: _calcSubtotal(),
-                        totalAmount: _calcTotal(),
-                        transactionDate: widget.transaction.transactionDate,
-                        items: _items,
-                      );
-                      
-                      bool success = await PrinterService.printReceipt(
-                        updatedTrx,
-                        paidAmount: _calcTotal(),
-                        change: 0,
-                      );
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(success ? 'Berhasil mencetak struk!' : 'Gagal mencetak struk.'),
-                            backgroundColor: success ? const Color(0xFF00796B) : Colors.red,
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.save),
-                    label: const Text('Simpan'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00796B),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: _saveTransaction,
-                  ),
                 ),
               ],
             ),
-          ],
-        ),
-      ),
     );
   }
 }
