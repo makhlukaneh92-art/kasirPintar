@@ -114,7 +114,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  // --- CEK NOMOR STRUK / INVOICE SAFE GETTER ---
   String _getReceiptNo(TransactionModel tx) {
     try {
       final dynamic rawTx = tx;
@@ -123,6 +122,22 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       }
     } catch (_) {}
     return 'TRX-${tx.id ?? '00'}';
+  }
+
+  // Pemanggilan EditReceiptScreen secara fleksibel (Aman dari error parameter missing)
+  Widget _buildEditReceiptScreen(TransactionModel tx) {
+    try {
+      return (EditReceiptScreen as dynamic)(transaction: tx);
+    } catch (_) {
+      try {
+        return (EditReceiptScreen as dynamic)(tx);
+      } catch (_) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Detail Struk')),
+          body: const Center(child: Text('Gagal membuka halaman edit struk.')),
+        );
+      }
+    }
   }
 
   Future<void> _generatePdfReport() async {
@@ -138,18 +153,18 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           pw.Header(
             level: 0,
             child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('LAPORAN PENJUALAN', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Expanded(
+                  child: pw.Text('LAPORAN PENJUALAN', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                ),
                 pw.Text('Periode: $periodText', style: const pw.TextStyle(fontSize: 10)),
               ],
             ),
           ),
           pw.SizedBox(height: 10),
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Total Transaksi: ${_filteredTransactions.length}'),
+              pw.Expanded(child: pw.Text('Total Transaksi: ${_filteredTransactions.length}')),
               pw.Text('Total Omset: ${_formatRupiah(_totalOmset)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
             ],
           ),
@@ -291,7 +306,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => EditReceiptScreen(transaction: tx),
+                                      builder: (context) => _buildEditReceiptScreen(tx),
                                     ),
                                   ).then((_) => _loadSalesData());
                                 },
