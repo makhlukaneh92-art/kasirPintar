@@ -4,7 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../data/models/customer_model.dart';
 import '../../data/models/transaction_model.dart';
+import '../../data/repositories/customer_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import 'edit_receipt_screen.dart';
 
@@ -17,9 +19,11 @@ class SalesReportScreen extends StatefulWidget {
 
 class _SalesReportScreenState extends State<SalesReportScreen> {
   final TransactionRepository _transactionRepo = TransactionRepository();
+  final CustomerRepository _customerRepo = CustomerRepository();
 
   List<TransactionModel> _allTransactions = [];
   List<TransactionModel> _filteredTransactions = [];
+  List<CustomerModel> _customers = [];
   bool _isLoading = true;
 
   double _totalOmset = 0;
@@ -29,14 +33,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSalesData();
+    _loadData();
   }
 
-  Future<void> _loadSalesData() async {
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final transactions = await _transactionRepo.getAllTransactions();
+      final customers = await _customerRepo.getAllCustomers();
+      
       _allTransactions = transactions;
+      _customers = customers;
       _applyFilter();
     } catch (e) {
       setState(() => _isLoading = false);
@@ -114,30 +121,16 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
+  // Menampilkan nomor struk sesuai dengan data ID di database (tanpa membuat TRX- ganda)
   String _getReceiptNo(TransactionModel tx) {
-    try {
-      final dynamic rawTx = tx;
-      if (rawTx.invoiceNumber != null && rawTx.invoiceNumber.toString().isNotEmpty) {
-        return rawTx.invoiceNumber.toString();
+    if (tx.id != null) {
+      String idStr = tx.id.toString();
+      if (idStr.startsWith('TRX-')) {
+        return idStr;
       }
-    } catch (_) {}
-    return 'TRX-${tx.id ?? '00'}';
-  }
-
-  // Pemanggilan EditReceiptScreen secara fleksibel (Aman dari error parameter missing)
-  Widget _buildEditReceiptScreen(TransactionModel tx) {
-    try {
-      return (EditReceiptScreen as dynamic)(transaction: tx);
-    } catch (_) {
-      try {
-        return (EditReceiptScreen as dynamic)(tx);
-      } catch (_) {
-        return Scaffold(
-          appBar: AppBar(title: const Text('Detail Struk')),
-          body: const Center(child: Text('Gagal membuka halaman edit struk.')),
-        );
-      }
+      return 'TRX-$idStr';
     }
+    return 'TRX-00';
   }
 
   Future<void> _generatePdfReport() async {
@@ -306,9 +299,12 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => _buildEditReceiptScreen(tx),
+                                      builder: (context) => EditReceiptScreen(
+                                        transaction: tx,
+                                        customers: _customers,
+                                      ),
                                     ),
-                                  ).then((_) => _loadSalesData());
+                                  ).then((_) => _loadData());
                                 },
                               ),
                             );
