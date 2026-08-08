@@ -114,6 +114,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
+  // --- CEK NOMOR STRUK / INVOICE SAFE GETTER ---
+  String _getReceiptNo(TransactionModel tx) {
+    try {
+      final dynamic rawTx = tx;
+      if (rawTx.invoiceNumber != null && rawTx.invoiceNumber.toString().isNotEmpty) {
+        return rawTx.invoiceNumber.toString();
+      }
+    } catch (_) {}
+    return 'TRX-${tx.id ?? '00'}';
+  }
+
   Future<void> _generatePdfReport() async {
     final pdf = pw.Document();
     final periodText = _selectedDateRange == null
@@ -127,7 +138,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           pw.Header(
             level: 0,
             child: pw.Row(
-              main: pw.MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text('LAPORAN PENJUALAN', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
                 pw.Text('Periode: $periodText', style: const pw.TextStyle(fontSize: 10)),
@@ -136,7 +147,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ),
           pw.SizedBox(height: 10),
           pw.Row(
-            main: pw.MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text('Total Transaksi: ${_filteredTransactions.length}'),
               pw.Text('Total Omset: ${_formatRupiah(_totalOmset)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -152,7 +163,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   : tx.transactionDate;
               return [
                 dateStr,
-                tx.receiptNumber,
+                _getReceiptNo(tx),
                 tx.paymentStatus,
                 _formatRupiah(tx.totalAmount),
               ];
@@ -190,7 +201,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Filter Tanggal Bar
                 Container(
                   color: Colors.grey.shade100,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -220,8 +230,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     ],
                   ),
                 ),
-
-                // Card Summary
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Row(
@@ -259,8 +267,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     ],
                   ),
                 ),
-
-                // List Transaksi
                 Expanded(
                   child: _filteredTransactions.isEmpty
                       ? const Center(child: Text('Tidak ada data transaksi'))
@@ -275,7 +281,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               child: ListTile(
-                                title: Text(tx.receiptNumber, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                title: Text(_getReceiptNo(tx), style: const TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Text('$dateFormatted • ${tx.paymentStatus}'),
                                 trailing: Text(
                                   _formatRupiah(tx.totalAmount),
