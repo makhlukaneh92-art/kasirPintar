@@ -64,7 +64,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final list = await _transactionRepo.getTransactions();
+    // Menggunakan getAllTransactions() yang ada di TransactionRepository terbaru
+    final list = await _transactionRepo.getAllTransactions();
     final customerList = await _customerRepo.getCustomers();
     setState(() {
       _allTransactions = list;
@@ -149,7 +150,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
   // --- MENCETAK STRUK ULANG VIA PRINTER THERMAL ---
   Future<void> _printReceiptThermal(TransactionModel trx) async {
-    bool success = await PrinterService.printReceipt(trx);
+    bool success = await PrinterService.printReceipt(
+      trx,
+      paidAmount: trx.totalAmount,
+      change: 0,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
