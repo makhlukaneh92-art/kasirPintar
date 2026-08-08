@@ -1,128 +1,43 @@
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
 import '../models/transaction_model.dart';
+import '../../services/database_helper.dart';
 
 class TransactionRepository {
-  static final TransactionRepository _instance = TransactionRepository._internal();
-  factory TransactionRepository() => _instance;
-  TransactionRepository._internal();
+  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
-  static Database? _database;
+  // Insert Transaksi Baru beserta Items & Potong Stok
+  Future<void> createTransaction(TransactionModel transaction) async {
+    final db = await _dbHelper.database;
 
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    await db.transaction((txn) async {
+      // 1. Insert header transaksi
+      await txn.insert(
+        'transactions',
+        transaction.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Insert detail barang & kurangi stok
+      for (var item in transaction.items) {
+        await txn.insert(
+          'transaction_items',
+          item.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        // Potong stok produk
+        await txn.rawUpdate(
+          'UPDATE products SET stock = stock - ? WHERE id = ?',
+          [item.quantity, item.productId],
+        );
+      }
+    });
   }
 
-  Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'pos_database.db');
-    return await openDatabase(
-      path,
-      version: 4,
-      onCreate: (db, version) async {
-        await _createTables(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute('''
-            CREATE TABLE IF NOT EXISTS expenses (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              title TEXT NOT NULL,
-              amount REAL NOT NULL,
-              expense_date TEXT NOT NULL
-            )
-          ''');
-        }
-        if (oldVersion < 3) {
-          await db.execute('ALTER TABLE transactions ADD COLUMN notes TEXT');
-        }
-        if (oldVersion < 4) {
-          await db.execute('''
-            CREATE TABLE IF NOT EXISTS other_incomes (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              title TEXT NOT NULL,
-              amount REAL NOT NULL,
-              income_date TEXT NOT NULL
-            )
-          ''');
-        }
-      },
-    );
-  }
-
-  Future<void> _createTables(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY,
-        transactionDate TEXT NOT NULL,
-        totalAmount REAL NOT NULL,
-        paymentStatus TEXT NOT NULL,
-        customerName TEXT,
-        paymentMethod TEXT,
-        itemsJson TEXT,
-        notes TEXT
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        amount REAL NOT NULL,
-        expense_date TEXT NOT NULL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS other_incomes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        amount REAL NOT NULL,
-        income_date TEXT NOT NULL
-      )
-    ''');
-  }
-
-  Future<void> _ensureTablesExist(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        amount REAL NOT NULL,
-        expense_date TEXT NOT NULL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS other_incomes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        amount REAL NOT NULL,
-        income_date TEXT NOT NULL
-      )
-    ''');
-  }
-
-  // --- TRANSAKSI PENJUALAN (LENGKAP) ---
-  Future<int> createTransaction(TransactionModel transaction) async {
-    final db = await database;
-    return await db.insert(
-      'transactions',
-      transaction.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<List<TransactionModel>> getTransactions() async {
-    final db = await database;
-    final maps = await db.query('transactions', orderBy: 'transactionDate DESC');
-    return maps.map((map) => TransactionModel.fromMap(map)).toList();
-  }
-
-  Future<int> updateTransaction(TransactionModel transaction) async {
-    final db = await database;
-    return await db.update(
+  // Update Transaksi / Edit Struk (Misal Mengubah Pelanggan / Status Bayar / Diskon / Total)
+  Future<void> updateTransaction(TransactionModel transaction) async {
+    final db = await _dbHelper.database;
+    await db.update(
       'transactions',
       transaction.toMap(),
       where: 'id = ?',
@@ -130,58 +45,57 @@ class TransactionRepository {
     );
   }
 
-  Future<int> deleteTransaction(String id) async {
-    final db = await database;
-    return await db.delete(
-      'transactions',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
+  // Hapus Transaksi & Kembalikan Stok
+  Future<void> deleteTransaction(String transactionId) async {
+    final db = await _dbHelper.database;
 
-  // --- PENGELUARAN OPERASIONAL ---
-  Future<int> createExpense(String title, double amount) async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.insert('expenses', {
-      'title': title,
-      'amount': amount,
-      'expense_date': DateTime.now().toIso8601String(),
+    await db.transaction((txn) async {
+      // Ambil barang-barang dalam transaksi untuk mengembalikan stok
+      final itemsMap = await txn.query(
+        'transaction_items',
+        where: 'transaction_id = ?',
+        whereArgs: [transactionId],
+      );
+
+      for (var map in itemsMap) {
+        final productId = map['product_id'] as int;
+        final qty = map['quantity'] as int;
+
+        // Kembalikan stok
+        await txn.rawUpdate(
+          'UPDATE products SET stock = stock + ? WHERE id = ?',
+          [qty, productId],
+        );
+      }
+
+      // Hapus item dan header
+      await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [transactionId]);
+      await txn.delete('transactions', where: 'id = ?', whereArgs: [transactionId]);
     });
   }
 
-  Future<List<Map<String, dynamic>>> getExpenses() async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.query('expenses', orderBy: 'id DESC');
-  }
+  // Ambil Semua Transaksi Lengkap
+  Future<List<TransactionModel>> getAllTransactions() async {
+    final db = await _dbHelper.database;
+    final List<Map<String, dynamic>> maps = await db.rawQuery('''
+      SELECT t.*, c.name as customer_name, c.phone as customer_phone
+      FROM transactions t
+      LEFT JOIN customers c ON t.customer_id = c.id
+      ORDER BY t.transaction_date DESC
+    ''');
 
-  Future<int> deleteExpense(int id) async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
-  }
+    List<TransactionModel> transactions = [];
+    for (var map in maps) {
+      final itemsMap = await db.query(
+        'transaction_items',
+        where: 'transaction_id = ?',
+        whereArgs: [map['id']],
+      );
 
-  // --- PEMASUKAN KAS LAINNYA ---
-  Future<int> createOtherIncome(String title, double amount) async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.insert('other_incomes', {
-      'title': title,
-      'amount': amount,
-      'income_date': DateTime.now().toIso8601String(),
-    });
-  }
+      final items = itemsMap.map((i) => TransactionItemModel.fromMap(i)).toList();
+      transactions.add(TransactionModel.fromMap(map, items: items));
+    }
 
-  Future<List<Map<String, dynamic>>> getOtherIncomes() async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.query('other_incomes', orderBy: 'id DESC');
-  }
-
-  Future<int> deleteOtherIncome(int id) async {
-    final db = await database;
-    await _ensureTablesExist(db);
-    return await db.delete('other_incomes', where: 'id = ?', whereArgs: [id]);
+    return transactions;
   }
 }
