@@ -147,6 +147,108 @@ class _CashierScreenState extends State<CashierScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
+  // --- DIALOG PENCARIAN PELANGGAN BARU ---
+  void _showCustomerSearchDialog() {
+    final searchController = TextEditingController();
+    List<CustomerModel> filteredList = List.from(_allCustomers);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Pilih / Cari Pelanggan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 380,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Ketik nama atau no. hp...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.all(10),
+                      ),
+                      onChanged: (query) {
+                        setModalState(() {
+                          filteredList = _allCustomers.where((c) {
+                            final name = c.name.toLowerCase();
+                            final phone = c.phone.toLowerCase();
+                            final q = query.toLowerCase();
+                            return name.contains(q) || phone.contains(q);
+                          }).toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.person_outline, color: Colors.grey),
+                      title: const Text('Umum (Tanpa Pelanggan)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onTap: () {
+                        setState(() => _selectedCustomer = null);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: filteredList.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: Text('Pelanggan tidak ditemukan', style: TextStyle(color: Colors.grey)),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: filteredList.length,
+                              itemBuilder: (context, index) {
+                                final customer = filteredList[index];
+                                final isSelected = _selectedCustomer?.id == customer.id;
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.person,
+                                    color: isSelected ? const Color(0xFF00796B) : Colors.grey,
+                                  ),
+                                  title: Text(
+                                    customer.name,
+                                    style: TextStyle(
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected ? const Color(0xFF00796B) : Colors.black,
+                                    ),
+                                  ),
+                                  subtitle: Text(customer.phone),
+                                  trailing: isSelected ? const Icon(Icons.check, color: Color(0xFF00796B)) : null,
+                                  onTap: () {
+                                    setState(() => _selectedCustomer = customer);
+                                    Navigator.pop(context);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('BATAL'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showEditCartDialog(ProductModel product) {
     final qtyController = TextEditingController(text: '${_cart[product.id!] ?? 1}');
     showDialog(
@@ -343,38 +445,49 @@ class _CashierScreenState extends State<CashierScreen> {
       items: items,
     );
 
-    await _transactionRepo.createTransaction(transaction);
+    try {
+      await _transactionRepo.createTransaction(transaction);
 
-    bool printSuccess = false;
-    if (shouldPrint) {
-      printSuccess = await PrinterService.printReceipt(
-        transaction,
-        paidAmount: _paidAmount,
-        change: _changeAmount,
-      );
-    }
+      bool printSuccess = false;
+      if (shouldPrint) {
+        printSuccess = await PrinterService.printReceipt(
+          transaction,
+          paidAmount: _paidAmount,
+          change: _changeAmount,
+        );
+      }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            shouldPrint
-                ? (printSuccess
-                    ? 'Transaksi Disimpan & Struk Berhasil Dicetak!'
-                    : 'Transaksi Disimpan, tetapi Struk Gagal Dicetak (Cek Printer)')
-                : 'Transaksi Berhasil Disimpan!',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              shouldPrint
+                  ? (printSuccess
+                      ? 'Transaksi Disimpan & Struk Berhasil Dicetak!'
+                      : 'Transaksi Disimpan, tetapi Struk Gagal Dicetak (Cek Printer)')
+                  : 'Transaksi Berhasil Disimpan!',
+            ),
+            backgroundColor: (shouldPrint && !printSuccess) ? Colors.orange : Colors.green,
           ),
-          backgroundColor: (shouldPrint && !printSuccess) ? Colors.orange : Colors.green,
-        ),
-      );
+        );
 
-      setState(() {
-        _cart.clear();
-        _discountController.text = '0';
-        _paidController.clear();
-        _selectedCustomer = null;
-      });
-      _loadInitialData();
+        setState(() {
+          _cart.clear();
+          _discountController.text = '0';
+          _paidController.clear();
+          _selectedCustomer = null;
+        });
+        _loadInitialData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyimpan transaksi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -390,20 +503,30 @@ class _CashierScreenState extends State<CashierScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // === WIDGET PILIH / CARI PELANGGAN TERBARU ===
                 Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: DropdownButtonFormField<CustomerModel>(
-                    decoration: const InputDecoration(
-                      labelText: 'Pilih Pelanggan (Opsional)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                      isDense: true,
+                  child: InkWell(
+                    onTap: _showCustomerSearchDialog,
+                    borderRadius: BorderRadius.circular(4),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Pilih / Cari Pelanggan (Opsional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                        suffixIcon: Icon(Icons.search),
+                        isDense: true,
+                      ),
+                      child: Text(
+                        _selectedCustomer != null
+                            ? '${_selectedCustomer!.name} (${_selectedCustomer!.phone})'
+                            : 'Umum (Tanpa Pelanggan)',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _selectedCustomer != null ? Colors.black : Colors.grey[700],
+                        ),
+                      ),
                     ),
-                    value: _selectedCustomer,
-                    items: _allCustomers.map((c) {
-                      return DropdownMenuItem(value: c, child: Text('${c.name} (${c.phone})'));
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedCustomer = val),
                   ),
                 ),
                 Padding(
