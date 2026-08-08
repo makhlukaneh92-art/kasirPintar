@@ -179,7 +179,7 @@ class _CashierScreenState extends State<CashierScreen> {
                         setModalState(() {
                           filteredList = _allCustomers.where((c) {
                             final name = c.name.toLowerCase();
-                            final phone = c.phone.toLowerCase();
+                            final phone = (c.phone ?? '').toLowerCase();
                             final q = query.toLowerCase();
                             return name.contains(q) || phone.contains(q);
                           }).toList();
@@ -223,7 +223,7 @@ class _CashierScreenState extends State<CashierScreen> {
                                       color: isSelected ? const Color(0xFF00796B) : Colors.black,
                                     ),
                                   ),
-                                  subtitle: Text(customer.phone),
+                                  subtitle: Text(customer.phone ?? '-'),
                                   trailing: isSelected ? const Icon(Icons.check, color: Color(0xFF00796B)) : null,
                                   onTap: () {
                                     setState(() => _selectedCustomer = customer);
@@ -519,7 +519,7 @@ class _CashierScreenState extends State<CashierScreen> {
                       ),
                       child: Text(
                         _selectedCustomer != null
-                            ? '${_selectedCustomer!.name} (${_selectedCustomer!.phone})'
+                            ? '${_selectedCustomer!.name} (${_selectedCustomer!.phone ?? '-'})'
                             : 'Umum (Tanpa Pelanggan)',
                         style: TextStyle(
                           fontSize: 14,
