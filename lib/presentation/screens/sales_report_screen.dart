@@ -40,7 +40,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     setState(() => _isLoading = true);
     try {
       final transactions = await _transactionRepo.getAllTransactions();
-      final customers = await _customerRepo.getAllCustomers();
+      final customers = await _customerRepo.getCustomers(); // Menggunakan getCustomers()
       
       _allTransactions = transactions;
       _customers = customers;
@@ -121,7 +121,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  // Menampilkan nomor struk sesuai dengan data ID di database (tanpa membuat TRX- ganda)
   String _getReceiptNo(TransactionModel tx) {
     if (tx.id != null) {
       String idStr = tx.id.toString();
