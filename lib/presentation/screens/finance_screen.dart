@@ -216,7 +216,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
             onPressed: () async {
               final String title = _titleController.text.trim();
               
-              // Sanitasi Input Angka (Aman dari Titik, Koma, Spasi, & Tulisan Rp)
               String cleanAmountStr = _amountController.text
                   .replaceAll(RegExp(r'[^0-9]'), '')
                   .trim();
@@ -257,7 +256,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     );
   }
 
-  // --- FUNGSI CETAK PDF ---
+  // --- FUNGSI CETAK PDF PERBAIKAN ---
   Future<void> _generatePdfReport() async {
     final pdf = pw.Document();
 
@@ -277,7 +276,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) {
           return pw.Column(
-            cross: pw.CrossAxisAlignment.start,
+            crossAxisAlignment: pw.CrossAxisAlignment.start, // FIXED: crossAxisAlignment
             children: [
               pw.Text('LAPORAN KEUANGAN & LABA BERSIH',
                   style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
