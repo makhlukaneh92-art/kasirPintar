@@ -34,7 +34,7 @@ class TransactionRepository {
     });
   }
 
-  // Update Transaksi / Edit Struk (Misal Mengubah Pelanggan / Status Bayar / Diskon / Total)
+  // Update Transaksi / Edit Struk
   Future<void> updateTransaction(TransactionModel transaction) async {
     final db = await _dbHelper.database;
     await db.update(
@@ -97,5 +97,62 @@ class TransactionRepository {
     }
 
     return transactions;
+  }
+
+  // Alias method untuk kompatibilitas layar keuangan
+  Future<List<TransactionModel>> getTransactions() async {
+    return await getAllTransactions();
+  }
+
+  // ==========================================
+  // METODE PENGELUARAN (EXPENSES)
+  // ==========================================
+  Future<List<Map<String, dynamic>>> getExpenses() async {
+    final db = await _dbHelper.database;
+    try {
+      return await db.query('expenses', orderBy: 'date DESC');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<int> createExpense(String title, double amount) async {
+    final db = await _dbHelper.database;
+    return await db.insert('expenses', {
+      'title': title,
+      'amount': amount,
+      'date': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<int> deleteExpense(int id) async {
+    final db = await _dbHelper.database;
+    return await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ==========================================
+  // METODE PEMASUKAN LAIN (OTHER INCOMES)
+  // ==========================================
+  Future<List<Map<String, dynamic>>> getOtherIncomes() async {
+    final db = await _dbHelper.database;
+    try {
+      return await db.query('other_incomes', orderBy: 'date DESC');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<int> createOtherIncome(String title, double amount) async {
+    final db = await _dbHelper.database;
+    return await db.insert('other_incomes', {
+      'title': title,
+      'amount': amount,
+      'date': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<int> deleteOtherIncome(int id) async {
+    final db = await _dbHelper.database;
+    return await db.delete('other_incomes', where: 'id = ?', whereArgs: [id]);
   }
 }
