@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../data/models/transaction_model.dart';
-import '../../data/repositories/transaction_repository.dart';
+
+// Import disesuaikan dengan struktur folder lib/presentation/screens/
+import '../../../data/models/transaction_model.dart';
+import '../../../data/repositories/transaction_repository.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -26,7 +28,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _loadReports() async {
     setState(() => _isLoading = true);
-    final data = await _transactionRepo.getTransactions();
+    
+    // PERBAIKAN: Menggunakan getAllTransactions() sesuai TransactionRepository terbaru
+    final data = await _transactionRepo.getAllTransactions();
     
     double omset = 0;
     double laba = 0;
